@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+/*
+ * Tipografía del sistema operativo, a propósito: no depende de Google Fonts,
+ * no agrega una request al cargar y se ve nativa en el celular, que es desde
+ * donde se va a usar el panel mientras se arman los frascos.
+ */
+@theme inline {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-white);
+  color: var(--color-stone-900);
+  /* Los números de stock y precios se leen mucho mejor alineados */
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Foco visible y consistente: el panel se usa mucho con teclado */
+:focus-visible {
+  outline: 2px solid var(--color-stone-900);
+  outline-offset: 2px;
+}
