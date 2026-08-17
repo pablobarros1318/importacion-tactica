@@ -41,10 +41,6 @@ export default async function PortalCatalogo() {
     <div className="space-y-8">
       <header className="text-center">
         <h1 className="titulo text-3xl text-tinta sm:text-4xl">Catálogo</h1>
-        <p className="mx-auto mt-2 max-w-md text-sm text-tinta-suave">
-          Envases, decants e insumos. Los precios bajan por cantidad: cuanto más
-          llevás, menos te sale cada uno.
-        </p>
         <Filete className="mx-auto mt-5 max-w-xs" />
       </header>
 

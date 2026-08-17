@@ -96,10 +96,6 @@ export default async function Portada() {
             <h1 className="titulo mt-3 text-3xl text-tinta sm:text-5xl">
               Tu marca empieza por un buen envase
             </h1>
-            <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-tinta-suave sm:text-base">
-              Frascos, decants e insumos para trabajar prolijo. Los precios bajan por
-              cantidad: cuanto más llevás, menos te sale cada uno.
-            </p>
             <Filete className="mx-auto mt-6 max-w-xs" />
           </header>
 
@@ -121,7 +117,7 @@ export default async function Portada() {
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 py-10 text-center sm:px-6">
           <Destello size={10} className="text-oro" />
           <p className="text-sm text-tinta-suave">
-            Banfield · Monte Grande — envíos a todo el país
+            Envíos a todo el país
           </p>
           <p className="text-xs text-tinta-suave/70">
             ¿Ya tenés cuenta?{' '}
