@@ -61,7 +61,7 @@ export default async function PortalLayout({
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 py-8 text-center sm:px-6">
           <Destello size={10} className="text-oro" />
           <p className="text-sm text-tinta-suave">
-            Banfield · Monte Grande — envíos a todo el país
+            Envíos a todo el país
           </p>
           <p className="text-xs text-tinta-suave/70">
             Hola, {perfil.nombre}. Cualquier duda, escribinos y te respondemos.

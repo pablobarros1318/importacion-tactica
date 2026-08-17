@@ -4,7 +4,6 @@ import { Monograma, Wordmark, Filete, Destello } from '@/components/marca'
 const PROMESAS = [
   'Envases, decants e insumos siempre en stock',
   'Precios que bajan por cantidad',
-  'Retirás por Banfield o Monte Grande, o te lo enviamos',
 ]
 
 /**
@@ -41,7 +40,7 @@ export default function AuthLayout({
         </p>
 
         <p className="mt-3 max-w-sm text-sm leading-relaxed text-tinta-suave">
-          Tu marca empieza por un buen envase. Pedí lo que necesites y seguí tu
+          Pedí lo que necesites y seguí tu
           pedido desde acá.
         </p>
 
@@ -55,7 +54,7 @@ export default function AuthLayout({
         </ul>
 
         <p className="mt-8 text-xs tracking-wide text-tinta-suave/70">
-          Banfield · Monte Grande — envíos a todo el país
+          Envíos a todo el país
         </p>
       </div>
 
