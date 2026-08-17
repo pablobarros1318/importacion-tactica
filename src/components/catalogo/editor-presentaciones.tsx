@@ -94,15 +94,18 @@ export function EditorPresentaciones({
 
             <label className="min-w-0 flex-1 text-sm">
               {i === 0 && (
-                <span className="mb-1 block text-xs text-stone-500">
-                  Nombre <span className="text-stone-400">(opcional)</span>
+                <span
+                  className="mb-1 block text-xs text-stone-500"
+                  title="Lo ve el cliente debajo del precio. Sirve para darle una referencia que la cuenta de gramos no puede saber, como cuántas piezas entran de verdad."
+                >
+                  Referencia <span className="text-stone-400">(opcional)</span>
                 </span>
               )}
               <input
                 name="pres_nombre"
                 value={f.nombre}
                 onChange={(e) => cambiar(i, 'nombre', e.target.value)}
-                placeholder="Bolsita de 100 g"
+                placeholder="Aprox. 50 unidades"
                 className={campo}
               />
             </label>
@@ -139,7 +142,8 @@ export function EditorPresentaciones({
           + Agregar paquete
         </button>
         <span className="text-xs text-stone-500">
-          El paquete más chico es el mínimo de compra
+          La referencia se muestra en la vidriera debajo del precio. El paquete
+          más chico es el mínimo de compra
           {filas.some((f) => aNumero(f.contenido) > 0) && (
             <>
               :{' '}

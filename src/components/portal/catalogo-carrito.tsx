@@ -301,10 +301,13 @@ export function CatalogoCarrito({
             const faltaMinimo = !enPaquetes && enCarrito > 0 && enCarrito < minimo
             const foto = urlDeFoto(p.foto)
             const granel = esGranel(p.unidad) && !enPaquetes
-            // Lo que le rinde: "un paquete de 100 g son unas 118 piezas". Es
-            // sólo una referencia: el stock se descuenta siempre por peso.
+            // Lo que le rinde al cliente. Si el paquete tiene un nombre escrito
+            // a mano —"Aprox. 50 unidades"— gana ése: es tu estimación real,
+            // contando lo que de verdad entra en la bolsita, y le gana a la
+            // división de gramos, que no sabe de acomodo ni de piezas partidas.
             const rinde = enPaquetes
-              ? textoEquivalencia(Number(pres?.contenido ?? 0), p.peso_gr, p.unidad)
+              ? (pres?.nombre?.trim() ||
+                 textoEquivalencia(Number(pres?.contenido ?? 0), p.peso_gr, p.unidad))
               : textoEquivalencia(enCarrito || minimo, p.peso_gr, p.unidad)
 
             return (
@@ -362,18 +365,24 @@ export function CatalogoCarrito({
                   </div>
 
                   <div>
+                    {/* Con paquetes el rótulo es largo —"el paquete de 1.000 g"—
+                        y pegado al precio partía la unidad en otro renglón. Va
+                        debajo, que además lo deja leer de un saque. */}
                     <p className="text-lg font-semibold tabular-nums text-tinta">
                       {enPaquetes
                         ? pesos(Number(pres?.precio ?? 0))
                         : precioPorUnidad(precioDe(p, enCarrito || minimo), p.unidad)}
-                      <span className="ml-1 text-xs font-normal text-tinta-suave">
-                        {enPaquetes
-                          ? `el paquete de ${enUnidad(Number(pres?.contenido ?? 0), p.unidad)}`
-                          : granel
-                            ? `el ${p.unidad === 'gramo' ? 'gramo' : 'ml'}`
-                            : 'c/u'}
-                      </span>
+                      {!enPaquetes && (
+                        <span className="ml-1 text-xs font-normal text-tinta-suave">
+                          {granel ? `el ${p.unidad === 'gramo' ? 'gramo' : 'ml'}` : 'c/u'}
+                        </span>
+                      )}
                     </p>
+                    {enPaquetes && (
+                      <p className="text-[11px] text-tinta-suave">
+                        el paquete de {enUnidad(Number(pres?.contenido ?? 0), p.unidad)}
+                      </p>
+                    )}
                     {!enPaquetes && minimo > 1 && (
                       <p className="text-[11px] text-tinta-suave">
                         desde {cantidadLarga(minimo, p.unidad)}
