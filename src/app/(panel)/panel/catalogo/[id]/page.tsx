@@ -8,6 +8,7 @@ import { FormProducto, type Opcion, type ProductoEditable } from '@/components/c
 import { FormVariante } from '@/components/catalogo/form-variante'
 import { RenombrarVariante } from '@/components/catalogo/renombrar-variante'
 import { CambiarClase } from '@/components/catalogo/cambiar-clase'
+import { CambiarUnidad } from '@/components/catalogo/cambiar-unidad'
 import { EditorReceta, type OpcionInsumo } from '@/components/catalogo/editor-receta'
 import { EditorPrecios } from '@/components/catalogo/editor-precios'
 import { EditorCosto, type Desglose } from '@/components/catalogo/editor-costo'
@@ -25,6 +26,7 @@ type Variante = {
   activo: boolean
   costo_actual: number
   peso_gr: number | null
+  unidad: 'unidad' | 'gramo' | 'mililitro'
 }
 
 export default async function DetalleProducto({
@@ -54,7 +56,10 @@ export default async function DetalleProducto({
       .select('sku, nombre, costo_actual, es_insumo')
       .order('sku'),
     supabase.from('v_costos').select('variante_id, costo_actual, costo_receta, desglose'),
-    supabase.from('v_catalogo_admin').select('variante_id, no_borrable').eq('producto_id', productoId),
+    supabase
+      .from('v_catalogo_admin')
+      .select('variante_id, no_borrable, stock_total')
+      .eq('producto_id', productoId),
     supabase
       .from('imagenes_producto')
       .select('id, variante_id, path, alt, orden')
@@ -77,11 +82,15 @@ export default async function DetalleProducto({
       desglose: Desglose[] | null
     }[]).map((c) => [Number(c.variante_id), c]),
   )
-  const borrable = new Map(
-    ((catalogoRes.data ?? []) as { variante_id: number; no_borrable: string | null }[]).map(
-      (c) => [Number(c.variante_id), c.no_borrable],
-    ),
-  )
+  const filasAdmin = (catalogoRes.data ?? []) as {
+    variante_id: number
+    no_borrable: string | null
+    stock_total: number
+  }[]
+  const borrable = new Map(filasAdmin.map((c) => [Number(c.variante_id), c.no_borrable]))
+  // Cambiar la unidad de algo que ya tiene stock necesita un factor de
+  // conversión; sin stock, es un cambio inofensivo.
+  const stockDe = new Map(filasAdmin.map((c) => [Number(c.variante_id), Number(c.stock_total)]))
   // Un producto se borra sólo si TODAS sus variantes se pueden borrar
   const motivoProducto =
     variantes.length === 0
@@ -238,6 +247,11 @@ export default async function DetalleProducto({
                     <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">
                       {clase}
                     </span>
+                    {v.unidad && v.unidad !== 'unidad' && (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800">
+                        se vende por {v.unidad === 'gramo' ? 'peso' : 'volumen'}
+                      </span>
+                    )}
                     {Object.entries(v.atributos ?? {}).map(([k, val]) => (
                       <span key={k} className="text-xs text-stone-500">
                         {k}: <strong className="font-medium">{val}</strong>
@@ -269,6 +283,14 @@ export default async function DetalleProducto({
                         clase={clase}
                         sku={v.sku}
                         tieneReceta={receta.length > 0}
+                      />
+                      <CambiarUnidad
+                        varianteId={v.id}
+                        productoId={productoId}
+                        unidad={v.unidad ?? 'unidad'}
+                        sku={v.sku}
+                        pesoGr={v.peso_gr}
+                        tieneStock={Number(stockDe.get(v.id) ?? 0) > 0}
                       />
                       <form action={archivarVariante}>
                         <input type="hidden" name="variante_id" value={v.id} />

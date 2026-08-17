@@ -79,10 +79,11 @@ export function FormCarga({
         <label className="text-sm">
           <span className="mb-1 block font-medium">Unidades</span>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             name="cantidad"
             min="0"
-            step="1"
+            
             required
             defaultValue={estado.valores?.cantidad ?? ''}
             className={campo}
@@ -111,10 +112,11 @@ export function FormCarga({
             Mínimo <span className="font-normal text-stone-400">(opcional)</span>
           </span>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             name="minimo"
             min="0"
-            step="1"
+            
             defaultValue={estado.valores?.minimo ?? ''}
             className={campo}
           />

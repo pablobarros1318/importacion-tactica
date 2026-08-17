@@ -119,10 +119,11 @@ export function FormTransferencia({
             <label className="w-32 text-sm">
               {i === 0 && <span className="mb-1 block text-xs text-stone-500">Cuántas</span>}
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 name="item_cantidad"
                 min="1"
-                step="1"
+                
                 required
                 value={f.cantidad}
                 onChange={(e) => cambiar(i, 'cantidad', e.target.value)}
@@ -250,10 +251,11 @@ export function FormRecibir({ id, items }: { id: number; items: ItemEnViaje[] })
               </span>
             </span>
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               name="rec_cantidad"
               min="0"
-              step="1"
+              
               required
               value={filas[i] ?? ''}
               onChange={(e) =>

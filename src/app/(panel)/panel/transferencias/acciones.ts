@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth'
+import { aNumero } from '@/lib/format'
 
 export type EstadoTrf = {
   error?: string
@@ -28,7 +29,7 @@ export async function crearTransferencia(
   const skus = formData.getAll('item_sku').map(String)
   const cants = formData.getAll('item_cantidad').map(String)
   const items = skus
-    .map((sku, i) => ({ sku, cantidad: Number(cants[i] ?? 0) }))
+    .map((sku, i) => ({ sku, cantidad: aNumero(cants[i] ?? '0') }))
     .filter((x) => x.sku && x.cantidad > 0)
 
   if (!origen || !destino) return { error: 'Elegí desde qué sede y hacia cuál.' }
@@ -89,7 +90,7 @@ export async function recibir(
   const obs = formData.getAll('rec_obs').map(String)
   const recibido = skus.map((sku, i) => ({
     sku,
-    cantidad: Number(cants[i] ?? 0),
+    cantidad: aNumero(cants[i] ?? '0'),
     observacion: (obs[i] ?? '').trim(),
   }))
 

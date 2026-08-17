@@ -66,10 +66,11 @@ export function FormRecepcion({
                 </td>
                 <td className="px-2 py-2 text-right">
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     name="rec_cantidad"
                     min="0"
-                    step="1"
+                    
                     required
                     value={filas[i]?.recibidas ?? ''}
                     onChange={(e) => cambiar(i, 'recibidas', e.target.value)}
@@ -78,10 +79,11 @@ export function FormRecepcion({
                 </td>
                 <td className="px-2 py-2 text-right">
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     name="rec_rotas"
                     min="0"
-                    step="1"
+                    
                     value={filas[i]?.rotas ?? '0'}
                     onChange={(e) => cambiar(i, 'rotas', e.target.value)}
                     aria-label={`Rotas de ${it.sku}`}

@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react'
 import { guardarReceta, type EstadoABM } from '@/app/(panel)/panel/catalogo/acciones'
+import { aNumero } from '@/lib/format'
 
 const inicial: EstadoABM = {}
 const campo =
@@ -31,7 +32,7 @@ export function EditorReceta({
 
   const costo = filas.reduce((acc, f) => {
     const ins = insumos.find((x) => x.sku === f.sku)
-    return acc + (ins ? ins.costo * Number(f.cantidad || 0) : 0)
+    return acc + (ins ? ins.costo * (aNumero(f.cantidad) || 0) : 0)
   }, 0)
 
   // Lo único que la base prohíbe en una receta es otro producto armado: anidar
@@ -76,13 +77,16 @@ export function EditorReceta({
 
           <label className="w-24 text-sm">
             {i === 0 && <span className="mb-1 block text-xs text-stone-500">Cantidad</span>}
+            {/* De texto y no `type="number"`: un insumo que se mide en gramos
+                lleva "0,85" por pieza, y ese tipo descarta la coma. */}
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               name="comp_cantidad"
-              min="0.0001"
-              step="0.0001"
               value={f.cantidad}
-              onChange={(e) => cambiar(i, 'cantidad', e.target.value)}
+              onChange={(e) =>
+                /^[\d.,]*$/.test(e.target.value) && cambiar(i, 'cantidad', e.target.value)
+              }
               required
               className={campo}
             />

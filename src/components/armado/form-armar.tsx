@@ -128,10 +128,11 @@ export function FormArmar({
             <label className="text-sm">
               <span className="mb-1 block font-medium">¿Cuántas?</span>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 name="cantidad"
                 min="1"
-                step="1"
+                
                 required
                 value={cantidad}
                 onChange={(e) => setCantidad(e.target.value)}
@@ -176,10 +177,11 @@ export function FormArmar({
                       </span>
                     )}
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
                       name="merma_cantidad"
                       min="0"
-                      step="1"
+                      
                       defaultValue="0"
                       aria-label={`Rotas de ${i.sku}`}
                       className="w-24 rounded-md border border-stone-300 px-2 py-1 text-sm tabular-nums outline-none focus:border-stone-900"

@@ -122,10 +122,11 @@ export function FilaStockDetalle({
               <label className="w-36 text-sm">
                 <span className="mb-1 block text-xs text-stone-500">¿Cuántas contaste?</span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   name="contado"
                   min="0"
-                  step="1"
+                  
                   required
                   autoFocus
                   defaultValue={estadoAjuste.valores?.contado ?? String(fila.fisico)}
@@ -181,10 +182,11 @@ export function FilaStockDetalle({
               <label className="w-36 text-sm">
                 <span className="mb-1 block text-xs text-stone-500">Mínimo</span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   name="minimo"
                   min="0"
-                  step="1"
+                  
                   defaultValue={String(fila.minimo)}
                   className={campo}
                 />

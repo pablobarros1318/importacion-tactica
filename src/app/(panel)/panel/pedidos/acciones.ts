@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth'
+import { aNumero } from '@/lib/format'
 
 export type EstadoPed = {
   error?: string
@@ -21,7 +22,7 @@ function leerItems(formData: FormData) {
   const skus = formData.getAll('item_sku').map(String)
   const cants = formData.getAll('item_cantidad').map(String)
   return skus
-    .map((sku, i) => ({ sku, cantidad: Number(cants[i] ?? 0) }))
+    .map((sku, i) => ({ sku, cantidad: aNumero(cants[i] ?? '0') }))
     .filter((x) => x.sku && x.cantidad > 0)
 }
 

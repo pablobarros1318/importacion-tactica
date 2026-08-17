@@ -4,8 +4,19 @@ import { useActionState, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { hacerPedido, type EstadoPortal } from '@/app/(portal)/portal/acciones'
 import { guardarCarrito, tomarCarrito } from '@/lib/carrito'
-import { pesos, numero } from '@/lib/format'
+import { pesos, numero, aNumero } from '@/lib/format'
 import { urlDeFoto } from '@/lib/imagenes'
+import {
+  cantidad as enUnidad,
+  cantidadLarga,
+  esGranel,
+  normalizar,
+  paso,
+  precioPorUnidad,
+  simbolo,
+  textoEquivalencia,
+  type Unidad,
+} from '@/lib/unidades'
 import { Destello, Monograma } from '@/components/marca'
 
 const inicial: EstadoPortal = {}
@@ -21,6 +32,9 @@ export type Producto = {
   categoria: string
   categoria_slug: string
   categoria_orden: number
+  unidad: Unidad
+  /** Lo que pesa una pieza. Sólo para decirle al cliente cuánto le rinde. */
+  peso_gr: number | null
   foto: string | null
   precio_desde: number | null
   minimo_compra: number
@@ -63,6 +77,10 @@ export function CatalogoCarrito({
   publico?: boolean
 }) {
   const [carrito, setCarrito] = useState<Record<string, number>>({})
+  // Lo que el usuario tiene tecleado en cada casillero de granel, sin
+  // interpretar. Sin esto, escribir "250," se reformatea a "250" y la coma
+  // desaparece justo antes de los decimales.
+  const [crudos, setCrudos] = useState<Record<string, string>>({})
   const router = useRouter()
   const [estado, accion, pendiente] = useActionState(hacerPedido, inicial)
   const [entrega, setEntrega] = useState<'retiro' | 'envio'>('retiro')
@@ -82,9 +100,13 @@ export function CatalogoCarrito({
     if (Object.keys(validos).length) setCarrito((c) => ({ ...validos, ...c }))
   }, [publico, productos])
 
-  const poner = (sku: string, cantidad: number) =>
+  // Antes esto redondeaba a entero siempre. Con un producto que se vende por
+  // peso, eso convertía 250,5 g en 250 y el cliente pagaba de menos sin que
+  // nadie se enterara. Ahora el redondeo lo decide la unidad de cada producto.
+  const poner = (sku: string, cant: number) =>
     setCarrito((c) => {
-      const n = Math.max(0, Math.floor(cantidad))
+      const p = productos.find((x) => x.sku === sku)
+      const n = Math.max(0, normalizar(cant, p?.unidad))
       if (!n) {
         const resto = { ...c }
         delete resto[sku]
@@ -116,14 +138,26 @@ export function CatalogoCarrito({
   )
 
   const total = lineas.reduce((a, l) => a + l.subtotal, 0)
-  const unidades = lineas.reduce((a, l) => a + l.cantidad, 0)
+
+  // Sumar cantidades sólo tiene sentido si todas están en la misma unidad:
+  // "500" mezclando gramos con frascos no significa nada. Cuando el carrito
+  // mezcla, se cuentan renglones en vez de piezas.
+  const unidadComun =
+    lineas.length > 0 && lineas.every((l) => l.p.unidad === lineas[0].p.unidad)
+      ? lineas[0].p.unidad
+      : null
+  const sumaCantidades = lineas.reduce((a, l) => a + l.cantidad, 0)
+  const resumenCantidad = unidadComun
+    ? cantidadLarga(sumaCantidades, unidadComun)
+    : `${numero(lineas.length)} ${lineas.length === 1 ? 'producto' : 'productos'}`
 
   // Los renglones que no llegan al mínimo del producto. La base los rechaza
   // igual, pero avisar antes evita que el cliente arme todo el pedido y se
   // entere recién al confirmarlo.
-  const cortos = lineas.filter(
-    (l) => l.cantidad < Math.max(1, Math.floor(Number(l.p.minimo_compra ?? 1))),
-  )
+  const minimoDe = (p: Producto) =>
+    Math.max(esGranel(p.unidad) ? 0.001 : 1, normalizar(Number(p.minimo_compra ?? 1), p.unidad))
+
+  const cortos = lineas.filter((l) => l.cantidad < minimoDe(l.p))
 
   const texto = busqueda.trim().toLowerCase()
   const visibles = useMemo(
@@ -208,9 +242,13 @@ export function CatalogoCarrito({
             // El mínimo sale del escalón de precio más bajo: si el producto se
             // vende de a 50, no tiene sentido dejar cargar 3 y que el pedido se
             // caiga recién al confirmarlo.
-            const minimo = Math.max(1, Math.floor(Number(p.minimo_compra ?? 1)))
+            const minimo = minimoDe(p)
             const faltaMinimo = enCarrito > 0 && enCarrito < minimo
             const foto = urlDeFoto(p.foto)
+            const granel = esGranel(p.unidad)
+            // Lo que le rinde: "un kilo son unas mil doscientas". Es sólo una
+            // referencia — el precio y el stock se calculan siempre con el peso.
+            const rinde = textoEquivalencia(enCarrito || minimo, p.peso_gr, p.unidad)
 
             return (
               <article
@@ -250,7 +288,7 @@ export function CatalogoCarrito({
 
                   {enCarrito > 0 && !faltaMinimo && (
                     <span className="absolute right-2 top-2 rounded-full bg-tinta px-2.5 py-0.5 text-[11px] font-medium text-crema-hueso tabular-nums">
-                      {numero(enCarrito)}
+                      {enUnidad(enCarrito, p.unidad)}
                     </span>
                   )}
                 </div>
@@ -268,13 +306,18 @@ export function CatalogoCarrito({
 
                   <div>
                     <p className="text-lg font-semibold tabular-nums text-tinta">
-                      {pesos(precioDe(p, enCarrito || minimo))}
-                      <span className="ml-1 text-xs font-normal text-tinta-suave">c/u</span>
+                      {precioPorUnidad(precioDe(p, enCarrito || minimo), p.unidad)}
+                      <span className="ml-1 text-xs font-normal text-tinta-suave">
+                        {granel ? `el ${p.unidad === 'gramo' ? 'gramo' : 'ml'}` : 'c/u'}
+                      </span>
                     </p>
                     {minimo > 1 && (
                       <p className="text-[11px] text-tinta-suave">
-                        desde {numero(minimo)} unidades
+                        desde {cantidadLarga(minimo, p.unidad)}
                       </p>
+                    )}
+                    {rinde && (
+                      <p className="text-[11px] text-tinta-suave/80">{rinde}</p>
                     )}
                   </div>
 
@@ -294,7 +337,13 @@ export function CatalogoCarrito({
                                 : 'border-arena text-tinta-suave',
                             ].join(' ')}
                           >
-                            {numero(Number(e.desde))}+ {pesos(Number(e.precio))}
+                            {/* La abreviatura sólo cuando aporta: "200 g+" hace
+                                falta, "200 u.+" es ruido — el número ya se
+                                entiende y el precio de al lado dice "c/u". */}
+                            {granel
+                              ? enUnidad(Number(e.desde), p.unidad)
+                              : numero(Number(e.desde))}
+                            + {precioPorUnidad(Number(e.precio), p.unidad)}
                           </li>
                         )
                       })}
@@ -314,7 +363,9 @@ export function CatalogoCarrito({
                             decirle "Agregar" prometería algo que hoy no hay. */}
                         {hay ? 'Agregar' : 'Encargar'}
                         {minimo > 1 && (
-                          <span className="ml-1 font-normal opacity-70">{numero(minimo)}</span>
+                          <span className="ml-1 font-normal opacity-70">
+                            {enUnidad(minimo, p.unidad)}
+                          </span>
                         )}
                       </button>
                     ) : (
@@ -322,24 +373,55 @@ export function CatalogoCarrito({
                         <button
                           type="button"
                           onClick={() => poner(p.sku, Math.max(0, enCarrito - minimo))}
-                          aria-label={`Sacar ${numero(minimo)} de ${p.sku}`}
+                          aria-label={`Sacar ${enUnidad(minimo, p.unidad)} de ${p.sku}`}
                           className="px-3 text-lg leading-none text-tinta-suave transition hover:bg-crema-suave hover:text-tinta"
                         >
                           −
                         </button>
+                        {/* Lo que se vende por peso NO puede ser un campo
+                            `type="number"`: ese tipo valida contra la locale
+                            del navegador y descarta la coma, así que quien
+                            escribe "250,5" —como se escribe acá— se queda sin
+                            nada y sin explicación. De texto con teclado
+                            numérico, coma y punto valen las dos. Lo que se
+                            cuenta de a uno sigue siendo numérico, que en el
+                            celular da las flechitas y un teclado mejor. */}
                         <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={enCarrito}
-                          onChange={(e) => poner(p.sku, Number(e.target.value))}
+                          type={granel ? 'text' : 'number'}
+                          inputMode="decimal"
+                          min={granel ? undefined : '0'}
+                          step={granel ? undefined : paso(p.unidad)}
+                          value={
+                            granel
+                              ? (crudos[p.sku] ?? String(enCarrito).replace('.', ','))
+                              : enCarrito
+                          }
+                          onChange={(e) => {
+                            const v = e.target.value
+                            if (!granel) return poner(p.sku, Number(v))
+                            // Se guarda lo tecleado tal cual para no pelearle
+                            // al usuario mientras escribe "250," a medio hacer.
+                            if (!/^[\d.,]*$/.test(v)) return
+                            setCrudos((c) => ({ ...c, [p.sku]: v }))
+                            poner(p.sku, aNumero(v))
+                          }}
+                          onBlur={() =>
+                            granel && setCrudos((c) => {
+                              const r = { ...c }
+                              delete r[p.sku]
+                              return r
+                            })
+                          }
                           aria-label={`Cantidad de ${p.sku}`}
                           className="w-full min-w-0 border-x border-arena py-2 text-center text-sm tabular-nums outline-none focus:bg-crema-suave"
                         />
+                        <span className="flex items-center pr-2 text-xs text-tinta-suave">
+                          {simbolo(p.unidad)}
+                        </span>
                         <button
                           type="button"
                           onClick={() => poner(p.sku, enCarrito + minimo)}
-                          aria-label={`Sumar ${numero(minimo)} a ${p.sku}`}
+                          aria-label={`Sumar ${enUnidad(minimo, p.unidad)} a ${p.sku}`}
                           className="px-3 text-lg leading-none text-tinta-suave transition hover:bg-crema-suave hover:text-tinta"
                         >
                           +
@@ -349,7 +431,7 @@ export function CatalogoCarrito({
 
                     {faltaMinimo ? (
                       <p className="mt-1.5 text-[11px] text-red-700">
-                        el mínimo son {numero(minimo)}
+                        el mínimo son {enUnidad(minimo, p.unidad)}
                       </p>
                     ) : (
                       enCarrito > 0 && (
@@ -372,12 +454,14 @@ export function CatalogoCarrito({
           <div className="flex flex-wrap items-center gap-3">
             <div className="min-w-0 flex-1">
               <p className="titulo text-lg text-tinta">
-                {numero(unidades)} {unidades === 1 ? 'unidad' : 'unidades'} ·{' '}
-                <span className="tabular-nums">{pesos(total)}</span>
+                {resumenCantidad} · <span className="tabular-nums">{pesos(total)}</span>
               </p>
               <p className="mt-0.5 truncate text-xs text-tinta-suave">
                 {lineas
-                  .map((l) => `${l.p.nombre_corto ?? l.p.producto} × ${numero(l.cantidad)}`)
+                  .map(
+                    (l) =>
+                      `${l.p.nombre_corto ?? l.p.producto} × ${enUnidad(l.cantidad, l.p.unidad)}`,
+                  )
                   .join(' · ')}
               </p>
             </div>
@@ -402,8 +486,9 @@ export function CatalogoCarrito({
               {cortos
                 .map(
                   (l) =>
-                    `${l.p.nombre_corto ?? l.p.producto} se vende de a ${numero(
-                      Math.floor(Number(l.p.minimo_compra ?? 1)),
+                    `${l.p.nombre_corto ?? l.p.producto} se vende de a ${enUnidad(
+                      minimoDe(l.p),
+                      l.p.unidad,
                     )} como mínimo`,
                 )
                 .join(' · ')}

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth'
+import { aNumero } from '@/lib/format'
 
 export type EstadoArmado = {
   error?: string
@@ -16,7 +17,9 @@ function loguear(donde: string, e: unknown) {
 }
 
 const numeroDe = (v: FormDataEntryValue | null) => {
-  const n = Number(String(v ?? '').replace(',', '.'))
+  // `aNumero` entiende "250,5" y también "1.250,5": el reemplazo simple
+  // de coma por punto se comía el separador de miles.
+  const n = aNumero(v)
   return Number.isFinite(n) ? n : null
 }
 

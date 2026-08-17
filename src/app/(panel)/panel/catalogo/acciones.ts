@@ -229,6 +229,53 @@ export async function cambiarClaseVariante(
   return { ok: `Ahora es ${clase}.` }
 }
 
+/**
+ * En qué se mide una variante.
+ *
+ * Cambiarla en algo que ya tuvo movimientos no reescribe el libro mayor —es
+ * inmutable a propósito—, así que lo que hay que arreglar es el stock de hoy:
+ * para eso está el factor, que deja un ajuste asentado con su motivo.
+ */
+export async function cambiarUnidadVariante(
+  _prev: EstadoABM,
+  formData: FormData,
+): Promise<EstadoABM> {
+  await requireAdmin()
+
+  const variante_id = Number(formData.get('variante_id'))
+  const producto_id = Number(formData.get('producto_id'))
+  const unidad = String(formData.get('unidad') ?? '')
+  const factorCrudo = String(formData.get('factor') ?? '').trim()
+  const factor = factorCrudo ? aNumero(factorCrudo) : null
+
+  if (!variante_id) return { error: 'Falta la variante.' }
+  if (!['unidad', 'gramo', 'mililitro'].includes(unidad)) {
+    return { error: 'Unidad inválida.' }
+  }
+  if (factorCrudo && (!Number.isFinite(factor as number) || (factor as number) <= 0)) {
+    return { error: 'El factor tiene que ser un número mayor a cero.' }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('fn_cambiar_unidad_variante', {
+    p_variante_id: variante_id,
+    p_unidad: unidad,
+    p_factor: factor,
+  })
+
+  if (error) {
+    loguear('cambiarUnidadVariante', error)
+    return { error: mensajeDeBase(error.message) }
+  }
+
+  revalidatePath(`/panel/catalogo/${producto_id}`)
+  revalidatePath('/panel/catalogo')
+  revalidatePath('/panel/stock')
+  revalidatePath('/portal')
+  revalidatePath('/')
+  return { ok: `Ahora se mide en ${unidad === 'unidad' ? 'unidades' : unidad + 's'}.` }
+}
+
 /* ----------------------------------------------------------------- fotos -- */
 
 /**
@@ -329,8 +376,10 @@ export async function guardarReceta(
   const items = skus
     .map((sku, i) => ({
       componente_sku: sku,
-      cantidad: Number(cantidades[i] || 0),
-      merma_esperada_pct: Number(mermas[i] || 0),
+      // Con `aNumero` y no con `Number`: los campos son de texto para poder
+      // escribir "0,85", y `Number("0,85")` es NaN.
+      cantidad: aNumero(cantidades[i] || '0') || 0,
+      merma_esperada_pct: aNumero(mermas[i] || '0') || 0,
     }))
     .filter((x) => x.componente_sku && x.cantidad > 0)
 
