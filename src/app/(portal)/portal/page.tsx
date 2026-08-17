@@ -1,8 +1,12 @@
-import Link from 'next/link'
 import { requireCliente, getSedes } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { CatalogoCarrito, type Producto } from '@/components/portal/catalogo-carrito'
+import {
+  CatalogoCarrito,
+  type Producto,
+  type Categoria,
+} from '@/components/portal/catalogo-carrito'
 import { ordenarPor } from '@/lib/orden'
+import { Filete } from '@/components/marca'
 
 export const metadata = { title: 'Catálogo · Importación Táctica' }
 
@@ -13,8 +17,9 @@ export default async function PortalCatalogo() {
   // Crea o engancha la ficha de cliente en el primer ingreso
   await supabase.rpc('fn_asegurar_cliente')
 
-  const [catRes, misDatos, sedes] = await Promise.all([
+  const [catRes, rubrosRes, misDatos, sedes] = await Promise.all([
     supabase.from('v_catalogo_publico').select('*').order('producto'),
+    supabase.from('v_categorias_publicas').select('slug, nombre, productos').order('orden'),
     supabase
       .from('v_mis_datos')
       .select('sede_preferida_id, direccion')
@@ -25,34 +30,30 @@ export default async function PortalCatalogo() {
   if (catRes.error) console.error('[portal]', catRes.error.message)
   const productos = ordenarPor(
     (catRes.data ?? []) as Producto[],
+    (p) => p.categoria_orden,
     (p) => p.producto,
     (p) => p.sku,
   )
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Catálogo</h1>
-          <p className="mt-1 text-sm text-stone-500">
-            Los precios bajan por cantidad.
-          </p>
-        </div>
-        <Link
-          href="/portal/mis-pedidos"
-          className="text-sm text-stone-600 underline underline-offset-4 hover:text-stone-900"
-        >
-          Mis pedidos
-        </Link>
-      </div>
+    <div className="space-y-8">
+      <header className="text-center">
+        <h1 className="titulo text-3xl text-tinta sm:text-4xl">Catálogo</h1>
+        <p className="mx-auto mt-2 max-w-md text-sm text-tinta-suave">
+          Envases, decants e insumos. Los precios bajan por cantidad: cuanto más
+          llevás, menos te sale cada uno.
+        </p>
+        <Filete className="mx-auto mt-5 max-w-xs" />
+      </header>
 
       {productos.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-stone-300 px-6 py-16 text-center text-sm text-stone-400">
+        <p className="rounded-lg border border-dashed border-arena px-6 py-16 text-center text-sm text-tinta-suave">
           Todavía no hay productos publicados.
         </p>
       ) : (
         <CatalogoCarrito
           productos={productos}
+          categorias={(rubrosRes.data ?? []) as Categoria[]}
           sedes={sedes.map((s) => ({
             id: Number(s.id),
             nombre: s.nombre,

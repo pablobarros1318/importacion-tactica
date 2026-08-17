@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth'
 import { aNumero } from '@/lib/format'
 import { aSlug } from '@/lib/catalogo'
+import { BUCKET } from '@/lib/imagenes'
 
 export type EstadoABM = {
   error?: string
@@ -226,6 +227,89 @@ export async function cambiarClaseVariante(
   revalidatePath('/panel/armado')
   revalidatePath('/panel')
   return { ok: `Ahora es ${clase}.` }
+}
+
+/* ----------------------------------------------------------------- fotos -- */
+
+/**
+ * La foto ya viajó al bucket desde el navegador; acá sólo se registra la ruta.
+ * Va en dos pasos para no pasar el archivo dos veces por la red: si subiera
+ * por el servidor, iría del navegador al servidor y del servidor a Storage.
+ */
+export async function registrarImagen(
+  _prev: EstadoABM,
+  formData: FormData,
+): Promise<EstadoABM> {
+  await requireAdmin()
+
+  const producto_id = Number(formData.get('producto_id'))
+  const varianteCruda = String(formData.get('variante_id') ?? '')
+  const variante_id = varianteCruda ? Number(varianteCruda) : null
+  const path = String(formData.get('path') ?? '').trim()
+  const alt = String(formData.get('alt') ?? '').trim()
+
+  if (!producto_id || !path) return { error: 'Falta la foto.' }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('fn_guardar_imagen', {
+    p_producto_id: producto_id,
+    p_variante_id: variante_id,
+    p_path: path,
+    p_alt: alt || null,
+  })
+
+  if (error) {
+    loguear('registrarImagen', error)
+    return { error: mensajeDeBase(error.message) }
+  }
+
+  revalidatePath(`/panel/catalogo/${producto_id}`)
+  revalidatePath('/portal')
+  return { ok: 'Foto agregada.' }
+}
+
+/**
+ * Borra la fila y después el archivo. Ese orden importa: si se cayera entre
+ * medio, queda un archivo huérfano ocupando lugar —molesto pero inofensivo—.
+ * Al revés quedaría una foto rota en la vidriera, que sí se ve.
+ */
+export async function borrarImagen(formData: FormData): Promise<void> {
+  await requireAdmin()
+
+  const id = Number(formData.get('imagen_id'))
+  const producto_id = Number(formData.get('producto_id'))
+  if (!id) return
+
+  const supabase = await createClient()
+  const { data: path, error } = await supabase.rpc('fn_borrar_imagen', { p_id: id })
+
+  if (error) {
+    loguear('borrarImagen', error)
+    return
+  }
+
+  if (typeof path === 'string' && path && !/^https?:\/\//i.test(path)) {
+    const { error: eStorage } = await supabase.storage.from(BUCKET).remove([path])
+    if (eStorage) loguear('borrarImagen (archivo)', eStorage)
+  }
+
+  revalidatePath(`/panel/catalogo/${producto_id}`)
+  revalidatePath('/portal')
+}
+
+export async function hacerPortada(formData: FormData): Promise<void> {
+  await requireAdmin()
+
+  const id = Number(formData.get('imagen_id'))
+  const producto_id = Number(formData.get('producto_id'))
+  if (!id) return
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('fn_hacer_portada', { p_id: id })
+  if (error) loguear('hacerPortada', error)
+
+  revalidatePath(`/panel/catalogo/${producto_id}`)
+  revalidatePath('/portal')
 }
 
 /* ---------------------------------------------------------------- receta -- */

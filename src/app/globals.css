@@ -1,13 +1,42 @@
 @import "tailwindcss";
 
 /*
- * Tipografía del sistema operativo, a propósito: no depende de Google Fonts,
- * no agrega una request al cargar y se ve nativa en el celular, que es desde
- * donde se va a usar el panel mientras se arman los frascos.
+ * Tipografía.
+ *
+ * El cuerpo sigue siendo la del sistema operativo, a propósito: no agrega una
+ * request al cargar y se ve nativa en el celular, que es desde donde se usa el
+ * panel mientras se arman los frascos.
+ *
+ * Los títulos de las pantallas que ve el CLIENTE llevan una serif de alto
+ * contraste, que es la de la marca —la del logo y los posteos—. Viene por npm
+ * (@fontsource) en vez de Google Fonts: se sirve desde el mismo dominio, así
+ * que no hay una request a un tercero ni el salto de texto al cargar.
  */
+@import "@fontsource/playfair-display/400.css";
+@import "@fontsource/playfair-display/500.css";
+@import "@fontsource/playfair-display/600.css";
+
 @theme inline {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-display: "Playfair Display", ui-serif, Georgia, "Times New Roman", serif;
+
+  /*
+   * La paleta sale del logo y de los posteos: crema de fondo, dorado del
+   * monograma y una tinta oscura casi negra para el texto. El dorado NO se usa
+   * para texto chico sobre crema —no llega al contraste mínimo—: va en filetes,
+   * bordes, íconos y títulos grandes.
+   */
+  --color-crema: #f6efe4;
+  --color-crema-suave: #fbf7f0;
+  --color-crema-hueso: #fffdfa;
+  --color-arena: #e6dbc9;
+  --color-tinta: #23262c;
+  --color-tinta-suave: #55585f;
+  --color-oro: #c9a227;
+  --color-oro-claro: #e3c87a;
+  --color-oro-palido: #f0e3c2;
+  --color-oro-oscuro: #8a6d20;
 }
 
 :root {
@@ -26,4 +55,56 @@ body {
 :focus-visible {
   outline: 2px solid var(--color-stone-900);
   outline-offset: 2px;
+}
+
+/*
+ * Las pantallas del cliente (inicio, ingreso y portal) se marcan con esta
+ * clase en el <body> de su layout. El panel interno no la lleva: es una
+ * herramienta de trabajo y ahí la prioridad es leer rápido.
+ */
+.marca {
+  background: var(--color-crema);
+  color: var(--color-tinta);
+}
+
+.marca :focus-visible {
+  outline-color: var(--color-oro-oscuro);
+}
+
+.titulo {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+/* El nombre de la marca va en versalitas espaciadas, como en el logo */
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+/*
+ * El filete dorado con el rombo al medio que separa secciones en los posteos.
+ * Es un solo elemento: las dos líneas y el rombo salen de los pseudoelementos.
+ */
+.filete {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--color-oro);
+}
+
+.filete::before,
+.filete::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--color-oro-claro),
+    transparent
+  );
 }

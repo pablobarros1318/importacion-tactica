@@ -12,6 +12,7 @@ import { EditorReceta, type OpcionInsumo } from '@/components/catalogo/editor-re
 import { EditorPrecios } from '@/components/catalogo/editor-precios'
 import { EditorCosto, type Desglose } from '@/components/catalogo/editor-costo'
 import { BotonEliminar } from '@/components/catalogo/boton-eliminar'
+import { EditorFotos, type Foto } from '@/components/catalogo/editor-fotos'
 import { archivarVariante } from '../acciones'
 
 type Variante = {
@@ -41,7 +42,7 @@ export default async function DetalleProducto({
 
   const supabase = await createClient()
 
-  const [prodRes, varsRes, cats, insumosRes, costosRes, catalogoRes] = await Promise.all([
+  const [prodRes, varsRes, cats, insumosRes, costosRes, catalogoRes, fotosRes] = await Promise.all([
     supabase.from('productos').select('*').eq('id', productoId).maybeSingle(),
     supabase.from('variantes').select('*').eq('producto_id', productoId).order('sku'),
     supabase.from('categorias').select('id, nombre').eq('activo', true).order('orden'),
@@ -54,6 +55,12 @@ export default async function DetalleProducto({
       .order('sku'),
     supabase.from('v_costos').select('variante_id, costo_actual, costo_receta, desglose'),
     supabase.from('v_catalogo_admin').select('variante_id, no_borrable').eq('producto_id', productoId),
+    supabase
+      .from('imagenes_producto')
+      .select('id, variante_id, path, alt, orden')
+      .eq('producto_id', productoId)
+      .order('orden')
+      .order('id'),
   ])
 
   const producto = prodRes.data as (ProductoEditable & { descripcion_corta: string | null }) | null
@@ -94,6 +101,12 @@ export default async function DetalleProducto({
     costo: Number(x.costo_actual),
     esInsumo: x.es_insumo,
   }))
+
+  // Las fotos: las que tienen `variante_id` nulo valen para todo el producto y
+  // se usan de reserva cuando una variante no tiene las suyas.
+  const todasLasFotos = (fotosRes.data ?? []) as (Foto & { variante_id: number | null })[]
+  const fotosDelProducto = todasLasFotos.filter((f) => f.variante_id === null)
+  const fotosDe = (id: number) => todasLasFotos.filter((f) => Number(f.variante_id) === id)
 
   // Recetas y precios de todas las variantes, en dos consultas
   const ids = variantes.map((v) => v.id)
@@ -166,6 +179,22 @@ export default async function DetalleProducto({
         </div>
         <div className="px-4 py-4">
           <FormProducto producto={producto} categorias={(cats.data ?? []) as Opcion[]} />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-stone-200 bg-white">
+        <div className="border-b border-stone-100 px-4 py-3">
+          <h2 className="font-medium">Fotos del producto</h2>
+          <p className="mt-0.5 text-xs text-stone-500">
+            Valen para todas las variantes. Si una variante tiene fotos propias, esas ganan.
+          </p>
+        </div>
+        <div className="px-4 py-4">
+          <EditorFotos
+            productoId={productoId}
+            sku={producto.sku_base}
+            fotos={fotosDelProducto}
+          />
         </div>
       </section>
 
@@ -263,6 +292,30 @@ export default async function DetalleProducto({
                       esArmado={v.es_compuesto}
                       desglose={costos.get(v.id)?.desglose ?? []}
                     />
+
+                    {!v.es_insumo && (
+                      <details className="rounded-md bg-stone-50 px-3 py-2">
+                        <summary className="cursor-pointer text-sm font-medium">
+                          Fotos{' '}
+                          <span className="font-normal text-stone-500">
+                            {fotosDe(v.id).length
+                              ? `· ${numero(fotosDe(v.id).length)} propias`
+                              : fotosDelProducto.length
+                                ? '· usa las del producto'
+                                : '· falta cargarlas'}
+                          </span>
+                        </summary>
+                        <div className="mt-3">
+                          <EditorFotos
+                            productoId={productoId}
+                            varianteId={v.id}
+                            sku={v.sku}
+                            fotos={fotosDe(v.id)}
+                            heredadas={fotosDelProducto.length}
+                          />
+                        </div>
+                      </details>
+                    )}
 
                     {v.es_compuesto && (
                       <details open={receta.length === 0} className="rounded-md bg-stone-50 px-3 py-2">
