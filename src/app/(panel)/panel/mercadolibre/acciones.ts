@@ -26,7 +26,7 @@ export type EstadoVentaML = {
   }
 }
 
-export type EstadoCombo = { error?: string; ok?: string }
+export type EstadoPublicacion = { error?: string; ok?: string }
 
 type ItemCrudo = ItemVenta
 
@@ -116,29 +116,33 @@ export async function registrarVentaML(
 }
 
 /**
- * Guardar un combo.
+ * Guardar una publicación de Mercado Libre.
  *
- * Un combo no es un pedido ni una receta: es una lista que se repite y que no
- * tiene sentido volver a tipear cada vez. No toca stock ni precios.
+ * Una publicación es un aviso de ML que acá corresponde a uno o varios
+ * productos del stock. No es un pedido ni una receta: es una lista que se
+ * repite y que no tiene sentido volver a tipear cada vez. No toca stock ni
+ * precios. Y no es un combo de la vidriera, que va a ser otra cosa.
  */
-export async function guardarCombo(
-  _prev: EstadoCombo,
+export async function guardarPublicacion(
+  _prev: EstadoPublicacion,
   formData: FormData,
-): Promise<EstadoCombo> {
+): Promise<EstadoPublicacion> {
   await requireAdmin()
 
   const nombre = String(formData.get('nombre') ?? '').trim()
-  const montoCrudo = String(formData.get('combo_monto') ?? '').trim()
-  const comboId = Number(formData.get('combo_id') ?? 0)
+  const montoCrudo = String(formData.get('pub_monto') ?? '').trim()
+  const publicacionId = Number(formData.get('publicacion_id') ?? 0)
 
-  const skus = formData.getAll('combo_sku').map(String)
-  const cants = formData.getAll('combo_cantidad').map(String)
+  const skus = formData.getAll('pub_sku').map(String)
+  const cants = formData.getAll('pub_cantidad').map(String)
   const items = skus
     .map((sku, i) => ({ sku, cantidad: aNumero(cants[i] ?? '0') }))
     .filter((x) => x.sku && x.cantidad > 0)
 
-  if (!nombre) return { error: 'Ponele un nombre al combo.' }
-  if (items.length === 0) return { error: 'El combo necesita al menos un producto.' }
+  if (!nombre) return { error: 'Ponele un nombre a la publicación.' }
+  if (items.length === 0) {
+    return { error: 'La publicación necesita al menos un producto.' }
+  }
 
   const monto = montoCrudo === '' ? null : aNumero(montoCrudo)
   if (monto !== null && (!Number.isFinite(monto) || monto < 0)) {
@@ -146,31 +150,37 @@ export async function guardarCombo(
   }
 
   const supabase = await createClient()
-  const { error } = await supabase.rpc('fn_guardar_combo_ml', {
+  const { error } = await supabase.rpc('fn_guardar_publicacion_ml', {
     p_nombre: nombre,
     p_items: items,
     p_monto: monto,
     p_notas: String(formData.get('notas') ?? '').trim() || null,
-    p_combo_id: comboId || null,
+    p_publicacion_id: publicacionId || null,
   })
 
   if (error) {
-    console.error('[ml] guardar combo —', error.message)
+    console.error('[ml] guardar publicación —', error.message)
     return { error: error.message }
   }
 
   revalidatePath('/panel/mercadolibre')
-  return { ok: comboId ? `Combo "${nombre}" actualizado.` : `Combo "${nombre}" guardado.` }
+  return {
+    ok: publicacionId
+      ? `Publicación "${nombre}" actualizada.`
+      : `Publicación "${nombre}" guardada.`,
+  }
 }
 
-export async function borrarCombo(formData: FormData): Promise<void> {
+export async function borrarPublicacion(formData: FormData): Promise<void> {
   await requireAdmin()
-  const id = Number(formData.get('combo_id'))
+  const id = Number(formData.get('publicacion_id'))
   if (!id) return
 
   const supabase = await createClient()
-  const { error } = await supabase.rpc('fn_borrar_combo_ml', { p_combo_id: id })
-  if (error) console.error('[ml] borrar combo —', error.message)
+  const { error } = await supabase.rpc('fn_borrar_publicacion_ml', {
+    p_publicacion_id: id,
+  })
+  if (error) console.error('[ml] borrar publicación —', error.message)
 
   revalidatePath('/panel/mercadolibre')
 }

@@ -11,12 +11,12 @@ import { CampoDecimal } from '@/components/campo-decimal'
 
 export type OpcionVariante = { sku: string; nombre: string }
 export type OpcionSede = { id: number; nombre: string }
-export type ComboItem = { sku: string; nombre: string; cantidad: number }
-export type OpcionCombo = {
+export type PublicacionItem = { sku: string; nombre: string; cantidad: number }
+export type OpcionPublicacion = {
   id: number
   nombre: string
   monto: number | null
-  items: ComboItem[]
+  items: PublicacionItem[]
 }
 
 const inicial: EstadoVentaML = {}
@@ -26,13 +26,13 @@ const campo =
 export function FormVentaML({
   sedes,
   variantes,
-  combos,
+  publicaciones,
   sedePorDefecto,
   hoy,
 }: {
   sedes: OpcionSede[]
   variantes: OpcionVariante[]
-  combos: OpcionCombo[]
+  publicaciones: OpcionPublicacion[]
   sedePorDefecto: number | null
   hoy: string
 }) {
@@ -45,6 +45,7 @@ export function FormVentaML({
 
   const [filas, setFilas] = useState<ItemVenta[]>(previos)
   const [monto, setMonto] = useState(estado.valores?.monto ?? '')
+  const [usados, setUsados] = useState<string[]>([])
   const [clave, setClave] = useState(0)
 
   // useActionState devuelve un estado nuevo por envío: cuando trae valores,
@@ -55,6 +56,7 @@ export function FormVentaML({
     setUltimaFirma(firma)
     setFilas(previos)
     setMonto(estado.valores?.monto ?? '')
+    setUsados([])
     setClave((k) => k + 1)
   }
 
@@ -67,17 +69,64 @@ export function FormVentaML({
     setFilas((f) => (f.length === 1 ? f : f.filter((_, x) => x !== i)))
 
   /**
-   * Un combo llena el formulario y nada más. Deja el precio en blanco a
-   * propósito: lo que importa para el reporte es el monto liquidado, que el
-   * combo ya trae sugerido.
+   * Una publicación ocupa el renglón donde se la eligió y se abre en sus
+   * productos. Por eso está adentro del selector y no arriba de todo: para
+   * poner dos publicaciones en la misma venta se agrega otro renglón y se
+   * elige la otra.
+   *
+   * Los repetidos se juntan. Dos publicaciones pueden compartir un producto, y
+   * el mismo SKU en dos renglones haría que el reporte de margen contara esa
+   * venta dos veces —el cruce con el movimiento de stock es por producto, no
+   * por renglón—. La base también se defiende, pero acá se ve.
    */
-  const usarCombo = (id: string) => {
-    const c = combos.find((x) => String(x.id) === id)
+  const usarPublicacion = (indice: number, id: string) => {
+    const c = publicaciones.find((x) => String(x.id) === id)
     if (!c) return
-    setFilas(
-      c.items.map((i) => ({ sku: i.sku, cantidad: String(i.cantidad), precio: '' })),
-    )
-    setMonto(c.monto != null ? String(c.monto) : '')
+
+    setFilas((f) => {
+      const abierto = [
+        ...f.slice(0, indice),
+        ...c.items.map((i) => ({
+          sku: i.sku,
+          cantidad: String(i.cantidad),
+          precio: '',
+        })),
+        ...f.slice(indice + 1),
+      ]
+
+      const juntas: ItemVenta[] = []
+      for (const x of abierto) {
+        if (!x.sku) {
+          juntas.push(x)
+          continue
+        }
+        const ya = juntas.find((y) => y.sku === x.sku)
+        if (!ya) {
+          juntas.push({ ...x })
+          continue
+        }
+        ya.cantidad = String(aNumero(ya.cantidad || '0') + aNumero(x.cantidad || '0'))
+        // El precio que ya estaba escrito manda: es el único que alguien miró.
+        ya.precio = ya.precio || x.precio
+      }
+      return juntas
+    })
+
+    // El monto se acumula: dos publicaciones liquidan la suma de las dos.
+    // Sigue siendo una sugerencia y se puede pisar.
+    setMonto((m) => {
+      if (c.monto == null) return m
+      const previo = aNumero(m || '0')
+      return String(Math.round((previo + Number(c.monto)) * 100) / 100)
+    })
+    setUsados((u) => [...u, c.nombre])
+    setClave((k) => k + 1)
+  }
+
+  const limpiar = () => {
+    setFilas([{ sku: '', cantidad: '1', precio: '' }])
+    setMonto('')
+    setUsados([])
     setClave((k) => k + 1)
   }
 
@@ -93,34 +142,6 @@ export function FormVentaML({
 
   return (
     <form action={accion} className="space-y-4">
-      {combos.length > 0 && (
-        <label className="block text-sm sm:max-w-xs">
-          <span className="mb-1 block font-medium">
-            Combo <span className="font-normal text-stone-400">(atajo)</span>
-          </span>
-          <select
-            defaultValue=""
-            aria-label="Combo guardado"
-            onChange={(e) => {
-              usarCombo(e.target.value)
-              e.target.value = ''
-            }}
-            className={campo}
-          >
-            <option value="">Cargar un combo guardado…</option>
-            {combos.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-                {c.monto != null ? ` · ${pesos(Number(c.monto))}` : ''}
-              </option>
-            ))}
-          </select>
-          <span className="mt-1 block text-xs text-stone-500">
-            Llena los renglones y sugiere el monto. Después cambiás lo que haga falta.
-          </span>
-        </label>
-      )}
-
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">
           <span className="mb-1 block font-medium">¿De qué sede salió?</span>
@@ -179,27 +200,53 @@ export function FormVentaML({
       </div>
 
       <div className="space-y-2">
-        <p className="text-sm font-medium">Productos vendidos</p>
+        <p className="text-sm font-medium">
+          {publicaciones.length > 0
+            ? 'Publicaciones y productos vendidos'
+            : 'Productos vendidos'}
+        </p>
 
         {filas.map((fila, i) => (
           <div key={`${clave}-${i}`} className="flex items-end gap-2">
             <label className="min-w-0 flex-1 text-sm">
-              <span className="mb-1 block text-xs text-stone-500">Producto</span>
+              <span className="mb-1 block text-xs text-stone-500">
+                {publicaciones.length > 0 ? 'Publicación o producto' : 'Producto'}
+              </span>
               <select
                 name="sku"
                 value={fila.sku}
-                onChange={(e) => cambiar(i, 'sku', e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value
+                  // Una publicación no es un SKU: ocupa el renglón y se abre
+                  // en los suyos, así que nunca llega a viajar como valor.
+                  if (v.startsWith('pub:')) usarPublicacion(i, v.slice(4))
+                  else cambiar(i, 'sku', v)
+                }}
                 required
                 className={campo}
               >
                 <option value="" disabled>
-                  Elegí un producto…
+                  {publicaciones.length > 0
+                    ? 'Elegí una publicación o un producto…'
+                    : 'Elegí un producto…'}
                 </option>
-                {variantes.map((v) => (
-                  <option key={v.sku} value={v.sku}>
-                    {v.nombre} · {v.sku}
-                  </option>
-                ))}
+                {publicaciones.length > 0 && (
+                  <optgroup label="Publicaciones ML">
+                    {publicaciones.map((c) => (
+                      <option key={c.id} value={`pub:${c.id}`}>
+                        {c.nombre}
+                        {c.monto != null ? ` · ${pesos(Number(c.monto))}` : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="Productos">
+                  {variantes.map((v) => (
+                    <option key={v.sku} value={v.sku}>
+                      {v.nombre} · {v.sku}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </label>
 
@@ -244,13 +291,40 @@ export function FormVentaML({
           </div>
         ))}
 
-        <button
-          type="button"
-          onClick={agregar}
-          className="text-sm text-stone-600 underline underline-offset-4 hover:text-stone-900"
-        >
-          + Agregar otro producto
-        </button>
+        <div className="flex flex-wrap items-center gap-4">
+          <button
+            type="button"
+            onClick={agregar}
+            className="text-sm text-stone-600 underline underline-offset-4 hover:text-stone-900"
+          >
+            {publicaciones.length > 0
+              ? '+ Agregar otra publicación o producto'
+              : '+ Agregar otro producto'}
+          </button>
+          {usados.length > 0 && (
+            <button
+              type="button"
+              onClick={limpiar}
+              className="text-sm text-stone-500 underline underline-offset-4 hover:text-stone-900"
+            >
+              Empezar de nuevo
+            </button>
+          )}
+        </div>
+
+        {usados.length > 0 && (
+          <p className="text-xs text-stone-500">
+            En esta venta:{' '}
+            {[...new Set(usados)]
+              .map((n) => {
+                const veces = usados.filter((x) => x === n).length
+                return veces > 1 ? `${n} ×${veces}` : n
+              })
+              .join(' + ')}
+            . Los productos que estaban en más de una publicación quedaron en
+            un solo renglón, con las cantidades sumadas.
+          </p>
+        )}
       </div>
 
       {/* El precio publicado y lo que llega a la cuenta no son el mismo número:

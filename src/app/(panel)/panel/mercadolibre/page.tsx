@@ -2,8 +2,8 @@ import { requireAdmin, getSedes } from '@/lib/auth'
 import { getSedeActiva } from '@/lib/sede'
 import { createClient } from '@/lib/supabase/server'
 import { pesos, fecha as fmtFecha, hoyLocal } from '@/lib/format'
-import { FormVentaML, type OpcionCombo } from '@/components/form-venta-ml'
-import { CombosML } from '@/components/combos-ml'
+import { FormVentaML, type OpcionPublicacion } from '@/components/form-venta-ml'
+import { PublicacionesML } from '@/components/publicaciones-ml'
 import { anularVentaML } from './acciones'
 
 export const metadata = { title: 'Mercado Libre' }
@@ -28,7 +28,7 @@ export default async function MercadoLibre() {
   const [sedes, sedeActiva] = await Promise.all([getSedes(), getSedeActiva()])
   const supabase = await createClient()
 
-  const [variantesRes, ventasRes, combosRes] = await Promise.all([
+  const [variantesRes, ventasRes, publicacionesRes] = await Promise.all([
     supabase
       .from('variantes')
       .select('sku, nombre_corto, producto_id')
@@ -40,14 +40,14 @@ export default async function MercadoLibre() {
       .select('*')
       .order('id', { ascending: false })
       .limit(25),
-    supabase.from('v_combos_ml').select('*').eq('activo', true).order('nombre'),
+    supabase.from('v_publicaciones_ml').select('*').eq('activo', true).order('nombre'),
   ])
 
   const variantes = ((variantesRes.data ?? []) as { sku: string; nombre_corto: string | null }[])
     .map((v) => ({ sku: v.sku, nombre: v.nombre_corto ?? v.sku }))
 
   const ventas = (ventasRes.data ?? []) as VentaML[]
-  const combos = ((combosRes.data ?? []) as OpcionCombo[]).map((c) => ({
+  const publicaciones = ((publicacionesRes.data ?? []) as OpcionPublicacion[]).map((c) => ({
     ...c,
     items: (c.items ?? []).map((i) => ({ ...i, cantidad: Number(i.cantidad) })),
   }))
@@ -75,7 +75,7 @@ export default async function MercadoLibre() {
             <FormVentaML
               sedes={sedes.map((s) => ({ id: s.id, nombre: s.nombre }))}
               variantes={variantes}
-              combos={combos}
+              publicaciones={publicaciones}
               sedePorDefecto={sedeActiva?.id ?? null}
               hoy={hoyLocal()}
             />
@@ -86,14 +86,15 @@ export default async function MercadoLibre() {
       {variantes.length > 0 && (
         <section className="rounded-lg border border-stone-200 bg-white">
           <div className="border-b border-stone-100 px-4 py-3">
-            <h2 className="font-medium">Combos</h2>
+            <h2 className="font-medium">Publicaciones de Mercado Libre</h2>
             <p className="mt-0.5 text-xs text-stone-500">
-              Las listas que se repiten, guardadas. Sólo llenan el formulario de
-              arriba: no crean pedidos ni mueven stock.
+              Cada publicación es un aviso de ML y los productos del stock que
+              le corresponden. Sólo llenan el formulario de arriba: no crean
+              pedidos ni mueven stock.
             </p>
           </div>
           <div className="px-4 py-4">
-            <CombosML variantes={variantes} combos={combos} />
+            <PublicacionesML variantes={variantes} publicaciones={publicaciones} />
           </div>
         </section>
       )}

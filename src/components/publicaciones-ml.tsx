@@ -2,56 +2,63 @@
 
 import { useActionState, useState } from 'react'
 import {
-  guardarCombo,
-  borrarCombo,
-  type EstadoCombo,
+  guardarPublicacion,
+  borrarPublicacion,
+  type EstadoPublicacion,
 } from '@/app/(panel)/panel/mercadolibre/acciones'
 import { pesos } from '@/lib/format'
 import { CampoDecimal } from '@/components/campo-decimal'
-import type { OpcionVariante, OpcionCombo } from '@/components/form-venta-ml'
+import type { OpcionVariante, OpcionPublicacion } from '@/components/form-venta-ml'
 
-const inicial: EstadoCombo = {}
+const inicial: EstadoPublicacion = {}
 const campo =
   'w-full rounded-md border border-stone-300 px-2.5 py-1.5 text-sm outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900'
 
 type Fila = { sku: string; cantidad: string }
 
 /**
- * Los combos de Mercado Libre.
+ * Las publicaciones de Mercado Libre.
  *
- * Son un atajo para llenar el formulario de carga, nada más: no crean pedidos,
- * no tocan stock y no fijan precios. Por eso se pueden borrar sin miedo —una
- * venta ya cargada guarda sus propios renglones y no depende del combo.
+ * Una publicación es un aviso que allá se ve como un ítem y que acá
+ * corresponde a uno o varios productos del stock. Es un atajo para llenar el
+ * formulario de carga y nada más: no crea pedidos, no toca stock y no fija
+ * precios. Por eso se puede borrar sin miedo —una venta ya cargada guarda sus
+ * propios renglones y no depende de la publicación.
+ *
+ * Se llama así y no "combo" a propósito: un combo, en la vidriera, va a ser
+ * otra cosa —un producto armado que el cliente compra como uno solo—, y dos
+ * cosas distintas con el mismo nombre se confunden una sola vez, pero para
+ * siempre.
  *
  * El monto es "lo que ML suele liquidar por esto". Se guarda como ayuda y
  * siempre se puede pisar al cargar la venta, porque la liquidación real nunca
  * da dos veces lo mismo.
  */
-export function CombosML({
+export function PublicacionesML({
   variantes,
-  combos,
+  publicaciones,
 }: {
   variantes: OpcionVariante[]
-  combos: OpcionCombo[]
+  publicaciones: OpcionPublicacion[]
 }) {
-  const [editando, setEditando] = useState<number | 'nuevo' | null>(null)
+  const [editando, setEditando] = useState<number | 'nueva' | null>(null)
 
   return (
     <div className="space-y-4">
-      {combos.length === 0 && editando !== 'nuevo' && (
+      {publicaciones.length === 0 && editando !== 'nueva' && (
         <p className="text-sm text-stone-500">
-          Todavía no guardaste ninguno. Si en ML vendés siempre los mismos
-          packs, guardalos acá y la carga se vuelve un click.
+          Todavía no guardaste ninguna. Si en ML publicás siempre lo mismo,
+          guardalas acá y la carga se vuelve un click.
         </p>
       )}
 
       <ul className="divide-y divide-stone-100">
-        {combos.map((c) => (
+        {publicaciones.map((c) => (
           <li key={c.id} className="py-3 first:pt-0">
             {editando === c.id ? (
-              <FormCombo
+              <FormPublicacion
                 variantes={variantes}
-                combo={c}
+                publicacion={c}
                 alCerrar={() => setEditando(null)}
               />
             ) : (
@@ -73,8 +80,8 @@ export function CombosML({
                   >
                     Editar
                   </button>
-                  <form action={borrarCombo}>
-                    <input type="hidden" name="combo_id" value={c.id} />
+                  <form action={borrarPublicacion}>
+                    <input type="hidden" name="publicacion_id" value={c.id} />
                     <button
                       type="submit"
                       className="text-xs text-stone-500 underline-offset-4 hover:text-red-700 hover:underline"
@@ -89,34 +96,34 @@ export function CombosML({
         ))}
       </ul>
 
-      {editando === 'nuevo' ? (
-        <FormCombo variantes={variantes} alCerrar={() => setEditando(null)} />
+      {editando === 'nueva' ? (
+        <FormPublicacion variantes={variantes} alCerrar={() => setEditando(null)} />
       ) : (
         <button
           type="button"
-          onClick={() => setEditando('nuevo')}
+          onClick={() => setEditando('nueva')}
           className="text-sm text-stone-600 underline underline-offset-4 hover:text-stone-900"
         >
-          + Guardar un combo nuevo
+          + Guardar una publicación nueva
         </button>
       )}
     </div>
   )
 }
 
-function FormCombo({
+function FormPublicacion({
   variantes,
-  combo,
+  publicacion,
   alCerrar,
 }: {
   variantes: OpcionVariante[]
-  combo?: OpcionCombo
+  publicacion?: OpcionPublicacion
   alCerrar: () => void
 }) {
-  const [estado, accion, pendiente] = useActionState(guardarCombo, inicial)
+  const [estado, accion, pendiente] = useActionState(guardarPublicacion, inicial)
   const [filas, setFilas] = useState<Fila[]>(
-    combo?.items.length
-      ? combo.items.map((i) => ({ sku: i.sku, cantidad: String(i.cantidad) }))
+    publicacion?.items.length
+      ? publicacion.items.map((i) => ({ sku: i.sku, cantidad: String(i.cantidad) }))
       : [{ sku: '', cantidad: '1' }],
   )
 
@@ -125,14 +132,16 @@ function FormCombo({
 
   return (
     <form action={accion} className="space-y-3 rounded-md bg-stone-50 px-3 py-3">
-      {combo && <input type="hidden" name="combo_id" value={combo.id} />}
+      {publicacion && (
+        <input type="hidden" name="publicacion_id" value={publicacion.id} />
+      )}
 
       <div className="flex flex-wrap gap-3">
         <label className="min-w-48 flex-1 text-sm">
           <span className="mb-1 block text-xs text-stone-500">Nombre</span>
           <input
             name="nombre"
-            defaultValue={combo?.nombre ?? ''}
+            defaultValue={publicacion?.nombre ?? ''}
             placeholder="Pack x3 dorado"
             required
             className={campo}
@@ -142,12 +151,12 @@ function FormCombo({
           <span className="mb-1 block text-xs text-stone-500">
             Suele liquidar <span className="text-stone-400">(opcional)</span>
           </span>
-          {/* `combo_monto` y no `monto`: en esta página también está el campo
-              del monto liquidado, y dos campos con el mismo nombre confunden
-              tanto a quien lee el código como a las pruebas. */}
+          {/* `pub_monto` y no `monto`: en esta página también está el campo del
+              monto liquidado, y dos campos con el mismo nombre confunden tanto
+              a quien lee el código como a las pruebas. */}
           <CampoDecimal
-            name="combo_monto"
-            defaultValue={combo?.monto ?? ''}
+            name="pub_monto"
+            defaultValue={publicacion?.monto ?? ''}
             placeholder="24000"
             aria-label="Monto que suele liquidar Mercado Libre"
             className={`${campo} tabular-nums`}
@@ -160,7 +169,7 @@ function FormCombo({
           <label className="min-w-0 flex-1 text-sm">
             <span className="mb-1 block text-xs text-stone-500">Producto</span>
             <select
-              name="combo_sku"
+              name="pub_sku"
               value={f.sku}
               onChange={(e) => cambiar(i, 'sku', e.target.value)}
               required
@@ -180,7 +189,7 @@ function FormCombo({
             <span className="mb-1 block text-xs text-stone-500">Cant.</span>
             <input
               type="number"
-              name="combo_cantidad"
+              name="pub_cantidad"
               min="1"
               step="1"
               value={f.cantidad}
@@ -195,7 +204,7 @@ function FormCombo({
               setFilas((x) => (x.length === 1 ? x : x.filter((_, j) => j !== i)))
             }
             disabled={filas.length === 1}
-            aria-label="Quitar producto del combo"
+            aria-label="Quitar producto de la publicación"
             className="mb-0.5 rounded-md px-2 py-1.5 text-sm text-stone-500 hover:bg-stone-100 hover:text-stone-900 disabled:opacity-30"
           >
             ✕
@@ -228,7 +237,7 @@ function FormCombo({
           disabled={pendiente}
           className="rounded-md bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-60"
         >
-          {pendiente ? 'Guardando…' : 'Guardar combo'}
+          {pendiente ? 'Guardando…' : 'Guardar publicación'}
         </button>
         <button
           type="button"
