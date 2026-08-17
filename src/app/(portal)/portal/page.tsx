@@ -17,8 +17,10 @@ export default async function PortalCatalogo() {
   // Crea o engancha la ficha de cliente en el primer ingreso
   await supabase.rpc('fn_asegurar_cliente')
 
+  // La misma vista que la portada abierta: una sola fuente de verdad, y de paso
+  // la cantidad exacta de stock tampoco viaja al navegador del cliente.
   const [catRes, rubrosRes, misDatos, sedes] = await Promise.all([
-    supabase.from('v_catalogo_publico').select('*').order('producto'),
+    supabase.from('v_vidriera').select('*').order('producto'),
     supabase.from('v_categorias_publicas').select('slug, nombre, productos').order('orden'),
     supabase
       .from('v_mis_datos')
@@ -38,7 +40,11 @@ export default async function PortalCatalogo() {
   return (
     <div className="space-y-8">
       <header className="text-center">
-        <h1 className="titulo text-3xl text-tinta sm:text-4xl">CATÁLOGO</h1>
+        <h1 className="titulo text-3xl text-tinta sm:text-4xl">Catálogo</h1>
+        <p className="mx-auto mt-2 max-w-md text-sm text-tinta-suave">
+          Envases, decants e insumos. Los precios bajan por cantidad: cuanto más
+          llevás, menos te sale cada uno.
+        </p>
         <Filete className="mx-auto mt-5 max-w-xs" />
       </header>
 

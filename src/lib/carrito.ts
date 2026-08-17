@@ -1,0 +1,67 @@
+/**
+ * El carrito de quien todavía no tiene cuenta.
+ *
+ * En la vidriera abierta cualquiera puede ir sumando productos. Cuando quiere
+ * confirmar, tiene que crear la cuenta — y ahí navega a otra pantalla, con lo
+ * que el carrito, que vive en la memoria de React, se perdería. Guardarlo en el
+ * navegador es lo que hace que del otro lado lo esté esperando en vez de tener
+ * que armarlo de nuevo, que es justo el momento en que la gente abandona.
+ *
+ * Va en `localStorage` y no en la base a propósito: un carrito a medio armar de
+ * alguien que ni siquiera tiene cuenta no es información nuestra que valga la
+ * pena guardar, y así no hay nada que limpiar después.
+ */
+
+const CLAVE = 'it.carrito'
+
+export type CarritoGuardado = Record<string, number>
+
+/** Puede fallar: en modo privado o con el almacenamiento bloqueado, tira. */
+function almacen(): Storage | null {
+  try {
+    if (typeof window === 'undefined') return null
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+export function guardarCarrito(carrito: CarritoGuardado): void {
+  const a = almacen()
+  if (!a) return
+  try {
+    const limpio = Object.fromEntries(
+      Object.entries(carrito).filter(([, n]) => Number(n) > 0),
+    )
+    if (Object.keys(limpio).length === 0) a.removeItem(CLAVE)
+    else a.setItem(CLAVE, JSON.stringify(limpio))
+  } catch {
+    // Si no se puede guardar, no pasa nada grave: el carrito sigue en pantalla.
+  }
+}
+
+/**
+ * Lo lee y lo borra en el mismo movimiento. Se consume una sola vez: si no,
+ * volvería a aparecer cada vez que la persona entra al portal.
+ */
+export function tomarCarrito(): CarritoGuardado | null {
+  const a = almacen()
+  if (!a) return null
+  try {
+    const crudo = a.getItem(CLAVE)
+    if (!crudo) return null
+    a.removeItem(CLAVE)
+
+    const datos = JSON.parse(crudo) as unknown
+    if (!datos || typeof datos !== 'object' || Array.isArray(datos)) return null
+
+    const salida: CarritoGuardado = {}
+    for (const [sku, n] of Object.entries(datos as Record<string, unknown>)) {
+      const cantidad = Math.floor(Number(n))
+      if (sku && Number.isFinite(cantidad) && cantidad > 0) salida[sku] = cantidad
+    }
+    return Object.keys(salida).length ? salida : null
+  } catch {
+    return null
+  }
+}

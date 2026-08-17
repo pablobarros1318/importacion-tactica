@@ -1,7 +1,9 @@
 'use client'
 
-import { useActionState, useMemo, useState } from 'react'
+import { useActionState, useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { hacerPedido, type EstadoPortal } from '@/app/(portal)/portal/acciones'
+import { guardarCarrito, tomarCarrito } from '@/lib/carrito'
 import { pesos, numero } from '@/lib/format'
 import { urlDeFoto } from '@/lib/imagenes'
 import { Destello, Monograma } from '@/components/marca'
@@ -22,7 +24,9 @@ export type Producto = {
   foto: string | null
   precio_desde: number | null
   minimo_compra: number
-  disponible_total: number
+  // Booleano a propósito: la cantidad exacta no sale de la base. Publicarla
+  // sería contarle el inventario a cualquiera que abra la vidriera.
+  hay_stock: boolean
   escalas: Escala[] | null
 }
 
@@ -44,22 +48,39 @@ export type Categoria = { slug: string; nombre: string; productos: number }
 export function CatalogoCarrito({
   productos,
   categorias,
-  sedes,
-  sedePreferida,
-  direccionGuardada,
+  sedes = [],
+  sedePreferida = null,
+  direccionGuardada = null,
+  publico = false,
 }: {
   productos: Producto[]
   categorias: Categoria[]
-  sedes: Sede[]
-  sedePreferida: number | null
-  direccionGuardada: string | null
+  sedes?: Sede[]
+  sedePreferida?: number | null
+  direccionGuardada?: string | null
+  /** En la vidriera abierta no hay a quién facturarle: el pedido se confirma
+   *  después de crear la cuenta, y el carrito viaja guardado en el navegador. */
+  publico?: boolean
 }) {
   const [carrito, setCarrito] = useState<Record<string, number>>({})
+  const router = useRouter()
   const [estado, accion, pendiente] = useActionState(hacerPedido, inicial)
   const [entrega, setEntrega] = useState<'retiro' | 'envio'>('retiro')
   const [abierto, setAbierto] = useState(false)
   const [rubro, setRubro] = useState<string>('todo')
   const [busqueda, setBusqueda] = useState('')
+
+  // Al volver de crear la cuenta, el carrito que se armó en la vidriera
+  // abierta está esperando en el navegador. Se carga una sola vez y se borra.
+  useEffect(() => {
+    if (publico) return
+    const guardado = tomarCarrito()
+    if (!guardado) return
+    const validos = Object.fromEntries(
+      Object.entries(guardado).filter(([sku]) => productos.some((p) => p.sku === sku)),
+    )
+    if (Object.keys(validos).length) setCarrito((c) => ({ ...validos, ...c }))
+  }, [publico, productos])
 
   const poner = (sku: string, cantidad: number) =>
     setCarrito((c) => {
@@ -118,7 +139,7 @@ export function CatalogoCarrito({
         )
         // Lo que no hay va al final: sigue estando —para que se vea que existe—
         // pero no le come el lugar a lo que sí se puede pedir hoy.
-        .sort((a, b) => Number(b.disponible_total > 0) - Number(a.disponible_total > 0)),
+        .sort((a, b) => Number(b.hay_stock) - Number(a.hay_stock)),
     [productos, rubro, texto],
   )
 
@@ -183,7 +204,7 @@ export function CatalogoCarrito({
             // Al cliente no le importa si está armado o si hay que armarlo: eso
             // es cocina nuestra. Lo único que necesita saber es si lo puede
             // pedir, y para eso cuenta todo lo que se puede entregar.
-            const hay = Number(p.disponible_total) > 0
+            const hay = p.hay_stock
             // El mínimo sale del escalón de precio más bajo: si el producto se
             // vende de a 50, no tiene sentido dejar cargar 3 y que el pedido se
             // caiga recién al confirmarlo.
@@ -362,11 +383,17 @@ export function CatalogoCarrito({
             </div>
             <button
               type="button"
-              onClick={() => setAbierto((x) => !x)}
+              onClick={() => {
+                if (!publico) return setAbierto((x) => !x)
+                // El carrito se guarda antes de irse: del otro lado, cuando
+                // vuelva con la cuenta hecha, lo está esperando armado.
+                guardarCarrito(carrito)
+                router.push('/registro')
+              }}
               disabled={cortos.length > 0}
               className="rounded-lg bg-tinta px-5 py-2.5 text-sm font-medium text-crema-hueso transition hover:bg-tinta/90 disabled:opacity-50"
             >
-              {abierto ? 'Seguir mirando' : 'Hacer el pedido'}
+              {publico ? 'Continuar' : abierto ? 'Seguir mirando' : 'Hacer el pedido'}
             </button>
           </div>
 
@@ -384,7 +411,15 @@ export function CatalogoCarrito({
             </p>
           )}
 
-          {abierto && (
+          {publico && cortos.length === 0 && (
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-tinta-suave">
+              <Destello size={9} className="text-oro" />
+              Para confirmarlo necesitás una cuenta. Es un minuto y el carrito te espera
+              del otro lado.
+            </p>
+          )}
+
+          {!publico && abierto && (
             <form action={accion} className="mt-4 space-y-3 border-t border-arena pt-4">
               <input
                 type="hidden"

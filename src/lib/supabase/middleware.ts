@@ -2,8 +2,16 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { leerConfig, ConfigInvalida } from './config'
 
-/** Rutas que se pueden ver sin estar logueado. */
+/**
+ * Rutas que se pueden ver sin estar logueado.
+ *
+ * Se comparan por prefijo, así que la portada NO puede ir acá: '/' es prefijo
+ * de todo y dejaría el panel abierto de par en par. Va aparte, por igualdad.
+ */
 const PUBLICAS = ['/login', '/registro', '/recuperar', '/auth']
+
+/** La vidriera abierta: se entra al dominio y se ve el catálogo, sin cuenta. */
+const PORTADA = '/'
 
 /**
  * Refresca la sesión en cada request y decide si la persona puede entrar.
@@ -58,7 +66,7 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
-  const esPublica = PUBLICAS.some((p) => pathname.startsWith(p))
+  const esPublica = pathname === PORTADA || PUBLICAS.some((p) => pathname.startsWith(p))
 
   if (!user && !esPublica) {
     const url = request.nextUrl.clone()
