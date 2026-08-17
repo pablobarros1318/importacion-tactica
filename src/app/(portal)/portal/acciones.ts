@@ -19,9 +19,10 @@ function loguear(donde: string, e: unknown) {
 /**
  * El pedido del cliente.
  *
- * El carrito viaja como JSON desde el navegador, pero **sólo los SKU y las
- * cantidades**: los precios los pone la base. Que el carrito viva en el
- * navegador es cómodo, pero nada de lo que venga de ahí decide plata.
+ * El carrito viaja como JSON desde el navegador, pero **sólo los SKU, las
+ * cantidades y qué paquete se eligió**: los precios los pone la base. Que el
+ * carrito viva en el navegador es cómodo, pero nada de lo que venga de ahí
+ * decide plata — de la presentación viaja el identificador, no el precio.
  */
 export async function hacerPedido(
   _prev: EstadoPortal,
@@ -29,12 +30,29 @@ export async function hacerPedido(
 ): Promise<EstadoPortal> {
   await requireCliente()
 
-  let items: { sku: string; cantidad: number }[] = []
+  type Renglon = {
+    sku: string
+    cantidad?: number
+    presentacion_id?: number
+    paquetes?: number
+  }
+  let items: Renglon[] = []
   try {
     const crudo = JSON.parse(String(formData.get('carrito') ?? '[]'))
     items = (Array.isArray(crudo) ? crudo : [])
-      .map((x) => ({ sku: String(x?.sku ?? ''), cantidad: Number(x?.cantidad ?? 0) }))
-      .filter((x) => x.sku && x.cantidad > 0)
+      .map((x): Renglon => {
+        const sku = String(x?.sku ?? '')
+        const pres = Number(x?.presentacion_id ?? 0)
+        // Un renglón de paquete no lleva cantidad: la calcula la base a partir
+        // del contenido de la presentación, que es dato suyo y no del navegador.
+        if (pres > 0) {
+          return { sku, presentacion_id: pres, paquetes: Math.floor(Number(x?.paquetes ?? 0)) }
+        }
+        return { sku, cantidad: Number(x?.cantidad ?? 0) }
+      })
+      .filter((x) =>
+        x.sku && (x.presentacion_id ? (x.paquetes ?? 0) > 0 : (x.cantidad ?? 0) > 0),
+      )
   } catch {
     return { error: 'No pudimos leer el carrito. Probá de nuevo.' }
   }

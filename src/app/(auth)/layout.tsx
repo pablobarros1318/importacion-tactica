@@ -3,7 +3,7 @@ import { Monograma, Wordmark, Filete, Destello } from '@/components/marca'
 
 const PROMESAS = [
   'Envases, decants e insumos siempre en stock',
-  'Precios que bajan por cantidad',
+  'Precios por mayor.',
 ]
 
 /**

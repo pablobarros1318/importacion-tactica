@@ -14,7 +14,13 @@
 
 const CLAVE = 'it.carrito'
 
-export type CarritoGuardado = Record<string, number>
+/**
+ * Lo que hay en el carrito, por SKU: cuántos paquetes y de cuál presentación.
+ * Para lo que se cuenta de a uno, `presentacionId` va en nulo y `paquetes` es
+ * simplemente la cantidad.
+ */
+export type RenglonCarrito = { paquetes: number; presentacionId: number | null }
+export type CarritoGuardado = Record<string, RenglonCarrito>
 
 /** Puede fallar: en modo privado o con el almacenamiento bloqueado, tira. */
 function almacen(): Storage | null {
@@ -31,7 +37,7 @@ export function guardarCarrito(carrito: CarritoGuardado): void {
   if (!a) return
   try {
     const limpio = Object.fromEntries(
-      Object.entries(carrito).filter(([, n]) => Number(n) > 0),
+      Object.entries(carrito).filter(([, r]) => Number(r?.paquetes) > 0),
     )
     if (Object.keys(limpio).length === 0) a.removeItem(CLAVE)
     else a.setItem(CLAVE, JSON.stringify(limpio))
@@ -56,9 +62,20 @@ export function tomarCarrito(): CarritoGuardado | null {
     if (!datos || typeof datos !== 'object' || Array.isArray(datos)) return null
 
     const salida: CarritoGuardado = {}
-    for (const [sku, n] of Object.entries(datos as Record<string, unknown>)) {
-      const cantidad = Math.floor(Number(n))
-      if (sku && Number.isFinite(cantidad) && cantidad > 0) salida[sku] = cantidad
+    for (const [sku, crudo] of Object.entries(datos as Record<string, unknown>)) {
+      // Los carritos guardados antes de que existieran las presentaciones eran
+      // un número suelto. Se aceptan igual en vez de tirarlos.
+      const r =
+        typeof crudo === 'number'
+          ? { paquetes: crudo, presentacionId: null }
+          : (crudo as RenglonCarrito | null)
+      const paquetes = Number(r?.paquetes)
+      if (!sku || !Number.isFinite(paquetes) || paquetes <= 0) continue
+      const pres = Number(r?.presentacionId)
+      salida[sku] = {
+        paquetes,
+        presentacionId: Number.isFinite(pres) && pres > 0 ? pres : null,
+      }
     }
     return Object.keys(salida).length ? salida : null
   } catch {

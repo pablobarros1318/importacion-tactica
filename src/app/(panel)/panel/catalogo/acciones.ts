@@ -276,6 +276,65 @@ export async function cambiarUnidadVariante(
   return { ok: `Ahora se mide en ${unidad === 'unidad' ? 'unidades' : unidad + 's'}.` }
 }
 
+/**
+ * Los paquetes en los que se vende un producto a granel.
+ *
+ * A diferencia de los escalones de precio, acá el precio de cada paquete es
+ * fijo y no se deriva de multiplicar nada.
+ */
+export async function guardarPresentaciones(
+  _prev: EstadoABM,
+  formData: FormData,
+): Promise<EstadoABM> {
+  await requireAdmin()
+
+  const variante_id = Number(formData.get('variante_id'))
+  const producto_id = Number(formData.get('producto_id'))
+  const contenidos = formData.getAll('pres_contenido').map(String)
+  const precios = formData.getAll('pres_precio').map(String)
+  const nombres = formData.getAll('pres_nombre').map(String)
+
+  if (!variante_id) return { error: 'Falta la variante.' }
+
+  const items = contenidos
+    .map((c, i) => ({
+      contenido: aNumero(c),
+      precio: aNumero(precios[i] ?? ''),
+      nombre: (nombres[i] ?? '').trim() || null,
+    }))
+    // Un renglón vacío es alguien que agregó una fila y no la usó: se ignora
+    // en vez de rechazarle el formulario entero.
+    .filter((x) => Number.isFinite(x.contenido) && x.contenido > 0)
+
+  const repetido = items.find(
+    (x, i) => items.findIndex((y) => y.contenido === x.contenido) !== i,
+  )
+  if (repetido) {
+    return { error: `Hay dos paquetes de ${repetido.contenido}. Dejá uno solo.` }
+  }
+  const sinPrecio = items.find((x) => !Number.isFinite(x.precio) || x.precio < 0)
+  if (sinPrecio) {
+    return { error: `El paquete de ${sinPrecio.contenido} necesita un precio.` }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('fn_guardar_presentaciones', {
+    p_variante_id: variante_id,
+    p_items: items,
+  })
+
+  if (error) {
+    loguear('guardarPresentaciones', error)
+    return { error: mensajeDeBase(error.message) }
+  }
+
+  revalidatePath(`/panel/catalogo/${producto_id}`)
+  revalidatePath('/panel/precios')
+  revalidatePath('/portal')
+  revalidatePath('/')
+  return { ok: items.length ? 'Paquetes guardados.' : 'Se quitaron los paquetes.' }
+}
+
 /* ----------------------------------------------------------------- fotos -- */
 
 /**

@@ -11,6 +11,7 @@ import { CambiarClase } from '@/components/catalogo/cambiar-clase'
 import { CambiarUnidad } from '@/components/catalogo/cambiar-unidad'
 import { EditorReceta, type OpcionInsumo } from '@/components/catalogo/editor-receta'
 import { EditorPrecios } from '@/components/catalogo/editor-precios'
+import { EditorPresentaciones } from '@/components/catalogo/editor-presentaciones'
 import { EditorCosto, type Desglose } from '@/components/catalogo/editor-costo'
 import { BotonEliminar } from '@/components/catalogo/boton-eliminar'
 import { EditorFotos, type Foto } from '@/components/catalogo/editor-fotos'
@@ -44,7 +45,8 @@ export default async function DetalleProducto({
 
   const supabase = await createClient()
 
-  const [prodRes, varsRes, cats, insumosRes, costosRes, catalogoRes, fotosRes] = await Promise.all([
+  const [prodRes, varsRes, cats, insumosRes, costosRes, catalogoRes, fotosRes, presRes] =
+    await Promise.all([
     supabase.from('productos').select('*').eq('id', productoId).maybeSingle(),
     supabase.from('variantes').select('*').eq('producto_id', productoId).order('sku'),
     supabase.from('categorias').select('id, nombre').eq('activo', true).order('orden'),
@@ -66,6 +68,10 @@ export default async function DetalleProducto({
       .eq('producto_id', productoId)
       .order('orden')
       .order('id'),
+    supabase
+      .from('presentaciones')
+      .select('variante_id, contenido, precio, nombre')
+      .order('contenido'),
   ])
 
   const producto = prodRes.data as (ProductoEditable & { descripcion_corta: string | null }) | null
@@ -116,6 +122,20 @@ export default async function DetalleProducto({
   const todasLasFotos = (fotosRes.data ?? []) as (Foto & { variante_id: number | null })[]
   const fotosDelProducto = todasLasFotos.filter((f) => f.variante_id === null)
   const fotosDe = (id: number) => todasLasFotos.filter((f) => Number(f.variante_id) === id)
+
+  const presentacionesDe = (id: number) =>
+    ((presRes.data ?? []) as {
+      variante_id: number
+      contenido: number
+      precio: number
+      nombre: string | null
+    }[])
+      .filter((x) => Number(x.variante_id) === id)
+      .map((x) => ({
+        contenido: String(Number(x.contenido)).replace('.', ','),
+        precio: String(Number(x.precio)).replace('.', ','),
+        nombre: x.nombre ?? '',
+      }))
 
   // Recetas y precios de todas las variantes, en dos consultas
   const ids = variantes.map((v) => v.id)
@@ -367,7 +387,31 @@ export default async function DetalleProducto({
                       </details>
                     )}
 
-                    {!v.es_insumo && (
+                    {!v.es_insumo && v.unidad !== 'unidad' && (
+                      <details
+                        open={presentacionesDe(v.id).length === 0}
+                        className="rounded-md bg-stone-50 px-3 py-2"
+                      >
+                        <summary className="cursor-pointer text-sm font-medium">
+                          Paquetes{' '}
+                          <span className="font-normal text-stone-500">
+                            {presentacionesDe(v.id).length
+                              ? `· ${numero(presentacionesDe(v.id).length)} tamaños`
+                              : '· falta cargarlos'}
+                          </span>
+                        </summary>
+                        <div className="mt-3">
+                          <EditorPresentaciones
+                            varianteId={v.id}
+                            productoId={productoId}
+                            unidad={v.unidad}
+                            presentaciones={presentacionesDe(v.id)}
+                          />
+                        </div>
+                      </details>
+                    )}
+
+                    {!v.es_insumo && v.unidad === 'unidad' && (
                       <details open={escalas.length === 0} className="rounded-md bg-stone-50 px-3 py-2">
                         <summary className="cursor-pointer text-sm font-medium">
                           Precios{' '}
