@@ -114,7 +114,7 @@ export default async function MisPedidos({
                     </span>
                     {Number(p.descuento_pago ?? 0) > 0 && (
                       <span className="block text-xs text-emerald-700">
-                        con {pesos(Number(p.descuento_pago))} de descuento por efectivo
+                        con {pesos(Number(p.descuento_pago))} de descuento
                       </span>
                     )}
                   </span>

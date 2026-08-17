@@ -7,6 +7,7 @@ import { FormPedido, type Vendible, type Renglon } from '@/components/pedidos/fo
 import {
   AccionesPedido,
   FormPago,
+  FormCorregirCobro,
   BotonArmados,
 } from '@/components/pedidos/acciones-pedido'
 import { eliminarPedido } from '../acciones'
@@ -103,6 +104,9 @@ export default async function DetallePedido({
   const aArmar = Number(p.a_armar)
   const descuentoEfectivo = Number(descRes.data ?? 0.1)
   const descuento = Number(p.descuento_pago ?? 0)
+  // Se cobró algo distinto de lo que suman los renglones: por el descuento de
+  // efectivo, por una atención, o porque se cobró de más.
+  const ajustado = pagado && Number(p.total_cobrado) !== Number(p.total)
 
   const vendRes = editable
     ? await supabase.from('v_para_vender').select('*').eq('sede_id', p.sede_id).order('producto')
@@ -184,17 +188,23 @@ export default async function DetallePedido({
       )}
 
       {pagado && (
-        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          Cobrado {pesos(Number(p.total_cobrado))}
-          {p.metodo_pago && ` por ${p.metodo_pago}`}
-          {p.referencia_pago && ` (${p.referencia_pago})`}
-          {p.pagado_at && ` · ${fechaHora(p.pagado_at)}`}
-          {descuento > 0 && (
-            <span className="mt-0.5 block text-xs text-emerald-800">
-              {pesos(Number(p.total))} menos {pesos(descuento)} de descuento por efectivo.
-            </span>
-          )}
-        </p>
+        <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          <p>
+            Cobrado {pesos(Number(p.total_cobrado))}
+            {p.metodo_pago && ` por ${p.metodo_pago}`}
+            {p.referencia_pago && ` (${p.referencia_pago})`}
+            {p.pagado_at && ` · ${fechaHora(p.pagado_at)}`}
+            {descuento > 0 && (
+              <span className="mt-0.5 block text-xs text-emerald-800">
+                {pesos(Number(p.total))} menos {pesos(descuento)}
+                {p.metodo_pago === 'efectivo'
+                  ? ' de descuento por efectivo.'
+                  : ' respecto de lo que sumaban los productos.'}
+              </span>
+            )}
+          </p>
+          <FormCorregirCobro pedidoId={pedidoId} cobrado={Number(p.total_cobrado)} />
+        </div>
       )}
 
       {p.seguimiento && (
@@ -275,22 +285,29 @@ export default async function DetallePedido({
                 ))}
                 <tr>
                   <td colSpan={4} className="py-2 text-right font-medium">
-                    {descuento > 0 ? 'Subtotal' : 'Total'}
+                    {ajustado ? 'Suman los productos' : 'Total'}
                   </td>
                   <td className="px-2 py-2 text-right font-semibold tabular-nums">
                     {pesos(Number(p.total))}
                   </td>
                 </tr>
-                {descuento > 0 && (
+                {/* Se cobró otra cosa: puede ser el descuento por efectivo, una
+                    atención a un cliente o un adicional. La fila del medio sólo
+                    aparece cuando se cobró de menos. */}
+                {ajustado && (
                   <>
-                    <tr>
-                      <td colSpan={4} className="py-2 text-right text-emerald-700">
-                        Descuento por pago en efectivo
-                      </td>
-                      <td className="px-2 py-2 text-right tabular-nums text-emerald-700">
-                        −{pesos(descuento)}
-                      </td>
-                    </tr>
+                    {descuento > 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-2 text-right text-emerald-700">
+                          {p.metodo_pago === 'efectivo'
+                            ? 'Descuento por pago en efectivo'
+                            : 'Descuento'}
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums text-emerald-700">
+                          −{pesos(descuento)}
+                        </td>
+                      </tr>
+                    )}
                     <tr>
                       <td colSpan={4} className="py-2 text-right font-medium">
                         Total cobrado

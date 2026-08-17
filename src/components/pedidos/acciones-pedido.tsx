@@ -4,10 +4,12 @@ import { useActionState, useState } from 'react'
 import {
   cambiarEstado,
   registrarPago,
+  corregirCobro,
   generarArmados,
   type EstadoPed,
 } from '@/app/(panel)/panel/pedidos/acciones'
-import { pesos } from '@/lib/format'
+import { pesos, aNumero } from '@/lib/format'
+import { CampoDecimal } from '@/components/campo-decimal'
 
 const inicial: EstadoPed = {}
 
@@ -128,6 +130,18 @@ export function AccionesPedido({
   )
 }
 
+/**
+ * El cobro.
+ *
+ * Tres caminos, y el que manda es el último que se tocó:
+ *   · se cobra el total del pedido (lo normal);
+ *   · se tilda el descuento por efectivo y se cobra el total menos ese %;
+ *   · se escribe un monto a mano, y ese número gana sobre todo lo demás.
+ *
+ * El descuento por efectivo arranca destildado a propósito. Antes se aplicaba
+ * solo con elegir "Efectivo", y un descuento que se hace sin que nadie lo
+ * decida es un descuento que no se puede no hacer.
+ */
 export function FormPago({
   pedidoId,
   total,
@@ -140,55 +154,208 @@ export function FormPago({
 }) {
   const [res, accion, pendiente] = useActionState(registrarPago, inicial)
   const [metodo, setMetodo] = useState('transferencia')
+  const [conDescuento, setConDescuento] = useState(false)
+  const [otroMonto, setOtroMonto] = useState(false)
+  const [monto, setMonto] = useState('')
 
   const enEfectivo = metodo === 'efectivo'
-  const descuento = enEfectivo ? Math.round(total * descuentoEfectivo * 100) / 100 : 0
-  const aCobrar = total - descuento
+  const descuento =
+    enEfectivo && conDescuento ? Math.round(total * descuentoEfectivo * 100) / 100 : 0
+
+  const escrito = aNumero(monto)
+  const manual = otroMonto && monto.trim() !== '' && Number.isFinite(escrito)
+  const aCobrar = manual ? escrito : total - descuento
 
   return (
-    <form action={accion} className="flex flex-wrap items-end gap-3">
+    <form action={accion} className="space-y-3">
       <input type="hidden" name="pedido_id" value={pedidoId} />
-      <label className="w-40 text-sm">
-        <span className="mb-1 block text-xs text-stone-500">¿Cómo pagó?</span>
-        <select
-          name="metodo_pago"
-          value={metodo}
-          onChange={(e) => setMetodo(e.target.value)}
-          className="w-full rounded-md border border-stone-300 px-2.5 py-1.5 text-sm outline-none focus:border-stone-900"
+      {/* El servidor no adivina: si no viaja el tilde, no hay descuento. */}
+      <input
+        type="hidden"
+        name="descuento_efectivo"
+        value={enEfectivo && conDescuento && !manual ? '1' : ''}
+      />
+
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="w-40 text-sm">
+          <span className="mb-1 block text-xs text-stone-500">¿Cómo pagó?</span>
+          <select
+            name="metodo_pago"
+            value={metodo}
+            onChange={(e) => {
+              setMetodo(e.target.value)
+              if (e.target.value !== 'efectivo') setConDescuento(false)
+            }}
+            className="w-full rounded-md border border-stone-300 px-2.5 py-1.5 text-sm outline-none focus:border-stone-900"
+          >
+            <option value="transferencia">Transferencia</option>
+            <option value="efectivo">Efectivo</option>
+            <option value="mercadopago">Mercado Pago</option>
+            <option value="otro">Otro</option>
+          </select>
+        </label>
+        <label className="min-w-0 flex-1 text-sm">
+          <span className="mb-1 block text-xs text-stone-500">
+            Referencia <span className="text-stone-400">(opcional)</span>
+          </span>
+          <input
+            name="referencia_pago"
+            placeholder="número de operación, CBU…"
+            className="w-full rounded-md border border-stone-300 px-2.5 py-1.5 text-sm outline-none focus:border-stone-900"
+          />
+        </label>
+      </div>
+
+      <div className="space-y-2 rounded-md bg-stone-50 px-3 py-2.5">
+        <p className="text-sm">
+          El pedido suma <span className="tabular-nums">{pesos(total)}</span>
+          <span className="text-stone-500"> · el descuento por cantidad ya está adentro.</span>
+        </p>
+
+        {enEfectivo && (
+          <label
+            className={`flex items-center gap-2 text-sm ${manual ? 'opacity-40' : ''}`}
+          >
+            <input
+              type="checkbox"
+              checked={conDescuento}
+              disabled={manual}
+              onChange={(e) => setConDescuento(e.target.checked)}
+              className="size-4 rounded border-stone-300"
+            />
+            <span>
+              Hacerle el {Math.round(descuentoEfectivo * 100)}% por pagar en efectivo
+              {conDescuento && !manual && (
+                <span className="text-emerald-700"> · −{pesos(descuento)}</span>
+              )}
+            </span>
+          </label>
+        )}
+
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={otroMonto}
+            onChange={(e) => setOtroMonto(e.target.checked)}
+            className="size-4 rounded border-stone-300"
+          />
+          <span>Cobré otro monto</span>
+        </label>
+
+        {otroMonto && (
+          <div className="flex flex-wrap items-center gap-2 pl-6">
+            <CampoDecimal
+              name="monto_cobrado"
+              value={monto}
+              onChange={setMonto}
+              placeholder={String(Math.round(total))}
+              aria-label="Monto cobrado"
+              className="w-36 rounded-md border border-stone-300 px-2.5 py-1.5 text-sm tabular-nums outline-none focus:border-stone-900"
+            />
+            <span className="text-xs text-stone-500">
+              Se cobra esto y el resto queda anotado como descuento. El stock se
+              descuenta igual y el reporte muestra lo que entró de verdad.
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="submit"
+          disabled={pendiente || (otroMonto && !manual)}
+          className="rounded-md bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-60"
         >
-          <option value="transferencia">Transferencia</option>
-          <option value="efectivo">Efectivo</option>
-          <option value="mercadopago">Mercado Pago</option>
-          <option value="otro">Otro</option>
-        </select>
+          {pendiente ? 'Registrando…' : `Cobré ${pesos(aCobrar)}`}
+        </button>
+        {aCobrar !== total && (
+          <span className="text-sm text-stone-500">
+            <span className="tabular-nums line-through">{pesos(total)}</span>{' '}
+            <strong className="tabular-nums text-stone-900">{pesos(aCobrar)}</strong>
+          </span>
+        )}
+      </div>
+
+      {res.error && (
+        <p role="alert" className="text-sm text-red-700">
+          {res.error}
+        </p>
+      )}
+      {res.ok && (
+        <p role="status" className="text-sm text-emerald-700">
+          {res.ok}
+        </p>
+      )}
+    </form>
+  )
+}
+
+/**
+ * Arreglar lo cobrado después, sin tocar el pedido.
+ *
+ * Anular el pago no sirve una vez que el pedido salió —está bloqueado a
+ * propósito—, pero equivocarse en el monto pasa, y si no se puede corregir el
+ * reporte queda mal para siempre.
+ */
+export function FormCorregirCobro({
+  pedidoId,
+  cobrado,
+}: {
+  pedidoId: number
+  cobrado: number
+}) {
+  const [res, accion, pendiente] = useActionState(corregirCobro, inicial)
+  const [abierto, setAbierto] = useState(false)
+
+  if (!abierto) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAbierto(true)}
+        className="text-xs text-stone-500 underline underline-offset-4 hover:text-stone-900"
+      >
+        Corregir lo cobrado
+      </button>
+    )
+  }
+
+  return (
+    <form action={accion} className="flex flex-wrap items-end gap-2">
+      <input type="hidden" name="pedido_id" value={pedidoId} />
+      <label className="text-sm">
+        <span className="mb-1 block text-xs text-stone-500">Entró en realidad</span>
+        <CampoDecimal
+          name="monto_cobrado"
+          defaultValue={cobrado}
+          required
+          aria-label="Monto cobrado corregido"
+          className="w-36 rounded-md border border-stone-300 px-2.5 py-1.5 text-sm tabular-nums outline-none focus:border-stone-900"
+        />
       </label>
       <label className="min-w-0 flex-1 text-sm">
         <span className="mb-1 block text-xs text-stone-500">
-          Referencia <span className="text-stone-400">(opcional)</span>
+          Por qué <span className="text-stone-400">(opcional)</span>
         </span>
         <input
-          name="referencia_pago"
-          placeholder="número de operación, CBU…"
+          name="motivo"
+          placeholder="me había equivocado al cargarlo"
           className="w-full rounded-md border border-stone-300 px-2.5 py-1.5 text-sm outline-none focus:border-stone-900"
         />
       </label>
       <button
         type="submit"
         disabled={pendiente}
-        className="rounded-md bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-60"
+        className="mb-0.5 rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium hover:bg-stone-50 disabled:opacity-60"
       >
-        {pendiente ? 'Registrando…' : `Cobré ${pesos(aCobrar)}`}
+        {pendiente ? 'Guardando…' : 'Guardar'}
       </button>
-
-      {enEfectivo && (
-        <p className="w-full text-sm text-emerald-700">
-          En efectivo se descuenta el {Math.round(descuentoEfectivo * 100)}%:{' '}
-          <span className="tabular-nums">{pesos(total)}</span> −{' '}
-          <span className="tabular-nums">{pesos(descuento)}</span> ={' '}
-          <strong className="tabular-nums">{pesos(aCobrar)}</strong>. El descuento por
-          cantidad ya está en ese total.
-        </p>
-      )}
+      <button
+        type="button"
+        onClick={() => setAbierto(false)}
+        className="mb-0.5 px-2 py-1.5 text-sm text-stone-500 hover:text-stone-900"
+      >
+        Cancelar
+      </button>
 
       {res.error && (
         <p role="alert" className="w-full text-sm text-red-700">

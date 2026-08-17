@@ -2,7 +2,8 @@ import { requireAdmin, getSedes } from '@/lib/auth'
 import { getSedeActiva } from '@/lib/sede'
 import { createClient } from '@/lib/supabase/server'
 import { pesos, fecha as fmtFecha, hoyLocal } from '@/lib/format'
-import { FormVentaML } from '@/components/form-venta-ml'
+import { FormVentaML, type OpcionCombo } from '@/components/form-venta-ml'
+import { CombosML } from '@/components/combos-ml'
 import { anularVentaML } from './acciones'
 
 export const metadata = { title: 'Mercado Libre' }
@@ -15,6 +16,8 @@ type VentaML = {
   operacion: string | null
   comprador: string | null
   total: number
+  /** Lo que ML liquidó de verdad: es lo que va al reporte. */
+  cobrado: number
   estado: string
   detalle: string | null
 }
@@ -25,7 +28,7 @@ export default async function MercadoLibre() {
   const [sedes, sedeActiva] = await Promise.all([getSedes(), getSedeActiva()])
   const supabase = await createClient()
 
-  const [variantesRes, ventasRes] = await Promise.all([
+  const [variantesRes, ventasRes, combosRes] = await Promise.all([
     supabase
       .from('variantes')
       .select('sku, nombre_corto, producto_id')
@@ -37,12 +40,17 @@ export default async function MercadoLibre() {
       .select('*')
       .order('id', { ascending: false })
       .limit(25),
+    supabase.from('v_combos_ml').select('*').eq('activo', true).order('nombre'),
   ])
 
   const variantes = ((variantesRes.data ?? []) as { sku: string; nombre_corto: string | null }[])
     .map((v) => ({ sku: v.sku, nombre: v.nombre_corto ?? v.sku }))
 
   const ventas = (ventasRes.data ?? []) as VentaML[]
+  const combos = ((combosRes.data ?? []) as OpcionCombo[]).map((c) => ({
+    ...c,
+    items: (c.items ?? []).map((i) => ({ ...i, cantidad: Number(i.cantidad) })),
+  }))
 
   return (
     <div className="space-y-6">
@@ -67,12 +75,28 @@ export default async function MercadoLibre() {
             <FormVentaML
               sedes={sedes.map((s) => ({ id: s.id, nombre: s.nombre }))}
               variantes={variantes}
+              combos={combos}
               sedePorDefecto={sedeActiva?.id ?? null}
               hoy={hoyLocal()}
             />
           )}
         </div>
       </section>
+
+      {variantes.length > 0 && (
+        <section className="rounded-lg border border-stone-200 bg-white">
+          <div className="border-b border-stone-100 px-4 py-3">
+            <h2 className="font-medium">Combos</h2>
+            <p className="mt-0.5 text-xs text-stone-500">
+              Las listas que se repiten, guardadas. Sólo llenan el formulario de
+              arriba: no crean pedidos ni mueven stock.
+            </p>
+          </div>
+          <div className="px-4 py-4">
+            <CombosML variantes={variantes} combos={combos} />
+          </div>
+        </section>
+      )}
 
       <section className="rounded-lg border border-stone-200 bg-white">
         <div className="border-b border-stone-100 px-4 py-3">
@@ -95,7 +119,8 @@ export default async function MercadoLibre() {
                   <th className="px-4 py-2 font-normal">Operación</th>
                   <th className="px-4 py-2 font-normal">Detalle</th>
                   <th className="px-4 py-2 font-normal">Sede</th>
-                  <th className="px-4 py-2 text-right font-normal">Total</th>
+                  <th className="px-4 py-2 text-right font-normal">Publicado</th>
+                  <th className="px-4 py-2 text-right font-normal">Liquidado</th>
                   <th className="px-4 py-2" />
                 </tr>
               </thead>
@@ -113,8 +138,11 @@ export default async function MercadoLibre() {
                       </td>
                       <td className="px-4 py-2">{v.detalle}</td>
                       <td className="px-4 py-2 whitespace-nowrap">{v.sede}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">
+                      <td className="px-4 py-2 text-right tabular-nums text-stone-500">
                         {pesos(Number(v.total))}
+                      </td>
+                      <td className="px-4 py-2 text-right font-medium tabular-nums">
+                        {pesos(Number(v.cobrado ?? v.total))}
                       </td>
                       <td className="px-4 py-2 text-right">
                         {anulada ? (

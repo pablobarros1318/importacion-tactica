@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth'
+import { aNumero } from '@/lib/format'
 
 export type ItemVenta = { sku: string; cantidad: string; precio: string }
 
@@ -20,9 +21,12 @@ export type EstadoVentaML = {
     fecha?: string
     operacion?: string
     comprador?: string
+    monto?: string
     items?: ItemVenta[]
   }
 }
+
+export type EstadoCombo = { error?: string; ok?: string }
 
 type ItemCrudo = ItemVenta
 
@@ -48,11 +52,17 @@ export async function registrarVentaML(
     precio: precios[i] ?? '',
   }))
 
+  // Lo que ML liquidó de verdad. La pantalla lo sugiere sumando los renglones,
+  // pero entre la comisión y el envío casi nunca coinciden, así que es
+  // editable y es esto —no la suma— lo que va al reporte.
+  const montoCrudo = String(formData.get('monto') ?? '').trim()
+
   const valores = {
     sede_id: String(formData.get('sede_id') ?? ''),
     fecha,
     operacion,
     comprador,
+    monto: montoCrudo,
     items: crudos,
   }
 
@@ -71,6 +81,11 @@ export async function registrarVentaML(
     return { error: 'Cada producto necesita el precio al que se vendió.', valores }
   }
 
+  const monto = montoCrudo === '' ? null : aNumero(montoCrudo)
+  if (monto !== null && (!Number.isFinite(monto) || monto < 0)) {
+    return { error: 'Lo que liquidó Mercado Libre no se entiende.', valores }
+  }
+
   const supabase = await createClient()
   const { error } = await supabase.rpc('fn_registrar_venta_ml', {
     p_sede_id: sedeId,
@@ -79,6 +94,7 @@ export async function registrarVentaML(
     p_referencia: operacion || null,
     p_comprador: comprador || null,
     p_usuario_id: perfil.id,
+    p_monto: monto,
   })
 
   if (error) {
@@ -91,7 +107,72 @@ export async function registrarVentaML(
   revalidatePath('/panel/mercadolibre')
   revalidatePath('/panel/reportes')
   revalidatePath('/panel')
-  return { ok: 'Venta cargada. El stock ya quedó descontado.' }
+  return {
+    ok:
+      monto !== null
+        ? `Venta cargada por $${monto.toLocaleString('es-AR')}. El stock ya quedó descontado.`
+        : 'Venta cargada. El stock ya quedó descontado.',
+  }
+}
+
+/**
+ * Guardar un combo.
+ *
+ * Un combo no es un pedido ni una receta: es una lista que se repite y que no
+ * tiene sentido volver a tipear cada vez. No toca stock ni precios.
+ */
+export async function guardarCombo(
+  _prev: EstadoCombo,
+  formData: FormData,
+): Promise<EstadoCombo> {
+  await requireAdmin()
+
+  const nombre = String(formData.get('nombre') ?? '').trim()
+  const montoCrudo = String(formData.get('combo_monto') ?? '').trim()
+  const comboId = Number(formData.get('combo_id') ?? 0)
+
+  const skus = formData.getAll('combo_sku').map(String)
+  const cants = formData.getAll('combo_cantidad').map(String)
+  const items = skus
+    .map((sku, i) => ({ sku, cantidad: aNumero(cants[i] ?? '0') }))
+    .filter((x) => x.sku && x.cantidad > 0)
+
+  if (!nombre) return { error: 'Ponele un nombre al combo.' }
+  if (items.length === 0) return { error: 'El combo necesita al menos un producto.' }
+
+  const monto = montoCrudo === '' ? null : aNumero(montoCrudo)
+  if (monto !== null && (!Number.isFinite(monto) || monto < 0)) {
+    return { error: 'El monto sugerido no se entiende.' }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('fn_guardar_combo_ml', {
+    p_nombre: nombre,
+    p_items: items,
+    p_monto: monto,
+    p_notas: String(formData.get('notas') ?? '').trim() || null,
+    p_combo_id: comboId || null,
+  })
+
+  if (error) {
+    console.error('[ml] guardar combo —', error.message)
+    return { error: error.message }
+  }
+
+  revalidatePath('/panel/mercadolibre')
+  return { ok: comboId ? `Combo "${nombre}" actualizado.` : `Combo "${nombre}" guardado.` }
+}
+
+export async function borrarCombo(formData: FormData): Promise<void> {
+  await requireAdmin()
+  const id = Number(formData.get('combo_id'))
+  if (!id) return
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('fn_borrar_combo_ml', { p_combo_id: id })
+  if (error) console.error('[ml] borrar combo —', error.message)
+
+  revalidatePath('/panel/mercadolibre')
 }
 
 export async function anularVentaML(formData: FormData): Promise<void> {

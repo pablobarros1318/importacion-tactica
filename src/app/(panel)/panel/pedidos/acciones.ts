@@ -139,14 +139,26 @@ export async function registrarPago(
   const pedido_id = Number(formData.get('pedido_id'))
 
   const metodo = String(formData.get('metodo_pago') ?? '').trim()
+  // El descuento por efectivo dejó de ser automático: viaja sólo si el que
+  // cobra lo tildó. Sin el campo, se cobra el total.
+  const conDescuento = String(formData.get('descuento_efectivo') ?? '') === '1'
+
+  // Un monto a mano: una atención a un cliente, un redondeo. Vacío significa
+  // "el que corresponda", no "cero".
+  const crudo = String(formData.get('monto_cobrado') ?? '').trim()
+  const monto = crudo === '' ? null : aNumero(crudo)
+  if (monto !== null && (!Number.isFinite(monto) || monto < 0)) {
+    return { error: 'El monto cobrado no se entiende. Poné un número.' }
+  }
 
   const supabase = await createClient()
-  // Devuelve lo que efectivamente entró: el total menos el descuento que
-  // corresponda por la forma de pago.
+  // Devuelve lo que efectivamente entró.
   const { data, error } = await supabase.rpc('fn_registrar_pago', {
     p_pedido_id: pedido_id,
     p_metodo: metodo || null,
     p_referencia: String(formData.get('referencia_pago') ?? '').trim() || null,
+    p_descuento_efectivo: conDescuento,
+    p_monto: monto,
   })
 
   if (error) {
@@ -156,12 +168,48 @@ export async function registrarPago(
 
   revalidatePath(`/panel/pedidos/${pedido_id}`)
   revalidatePath('/panel/pedidos')
+  revalidatePath('/panel/reportes')
   const cobrado = `$${Number(data ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
   return {
     ok:
-      metodo === 'efectivo'
-        ? `Pago registrado: ${cobrado} con el descuento por efectivo.`
-        : `Pago registrado: ${cobrado}.`,
+      monto !== null
+        ? `Pago registrado: ${cobrado}, el monto que pusiste.`
+        : conDescuento
+          ? `Pago registrado: ${cobrado} con el descuento por efectivo.`
+          : `Pago registrado: ${cobrado}.`,
+  }
+}
+
+/** Arreglar lo cobrado cuando el pedido ya salió y no se puede anular el pago. */
+export async function corregirCobro(
+  _prev: EstadoPed,
+  formData: FormData,
+): Promise<EstadoPed> {
+  await requireAdmin()
+  const pedido_id = Number(formData.get('pedido_id'))
+  const monto = aNumero(String(formData.get('monto_cobrado') ?? ''))
+
+  if (!Number.isFinite(monto) || monto < 0) {
+    return { error: 'Poné cuánto entró en realidad.' }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('fn_corregir_cobro', {
+    p_pedido_id: pedido_id,
+    p_monto: monto,
+    p_motivo: String(formData.get('motivo') ?? '').trim() || null,
+  })
+
+  if (error) {
+    loguear('corregirCobro', error)
+    return { error: error.message }
+  }
+
+  revalidatePath(`/panel/pedidos/${pedido_id}`)
+  revalidatePath('/panel/pedidos')
+  revalidatePath('/panel/reportes')
+  return {
+    ok: `Corregido: entró $${Number(data ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}.`,
   }
 }
 

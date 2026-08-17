@@ -6,9 +6,18 @@ import {
   type EstadoVentaML,
   type ItemVenta,
 } from '@/app/(panel)/panel/mercadolibre/acciones'
+import { pesos, aNumero } from '@/lib/format'
+import { CampoDecimal } from '@/components/campo-decimal'
 
 export type OpcionVariante = { sku: string; nombre: string }
 export type OpcionSede = { id: number; nombre: string }
+export type ComboItem = { sku: string; nombre: string; cantidad: number }
+export type OpcionCombo = {
+  id: number
+  nombre: string
+  monto: number | null
+  items: ComboItem[]
+}
 
 const inicial: EstadoVentaML = {}
 const campo =
@@ -17,11 +26,13 @@ const campo =
 export function FormVentaML({
   sedes,
   variantes,
+  combos,
   sedePorDefecto,
   hoy,
 }: {
   sedes: OpcionSede[]
   variantes: OpcionVariante[]
+  combos: OpcionCombo[]
   sedePorDefecto: number | null
   hoy: string
 }) {
@@ -33,6 +44,7 @@ export function FormVentaML({
     : [{ sku: '', cantidad: '1', precio: '' }]
 
   const [filas, setFilas] = useState<ItemVenta[]>(previos)
+  const [monto, setMonto] = useState(estado.valores?.monto ?? '')
   const [clave, setClave] = useState(0)
 
   // useActionState devuelve un estado nuevo por envío: cuando trae valores,
@@ -42,16 +54,73 @@ export function FormVentaML({
   if (firma !== ultimaFirma) {
     setUltimaFirma(firma)
     setFilas(previos)
+    setMonto(estado.valores?.monto ?? '')
     setClave((k) => k + 1)
   }
+
+  const cambiar = (i: number, k: keyof ItemVenta, v: string) =>
+    setFilas((f) => f.map((x, j) => (j === i ? { ...x, [k]: v } : x)))
 
   const agregar = () =>
     setFilas((f) => [...f, { sku: '', cantidad: '1', precio: '' }])
   const quitar = (i: number) =>
     setFilas((f) => (f.length === 1 ? f : f.filter((_, x) => x !== i)))
 
+  /**
+   * Un combo llena el formulario y nada más. Deja el precio en blanco a
+   * propósito: lo que importa para el reporte es el monto liquidado, que el
+   * combo ya trae sugerido.
+   */
+  const usarCombo = (id: string) => {
+    const c = combos.find((x) => String(x.id) === id)
+    if (!c) return
+    setFilas(
+      c.items.map((i) => ({ sku: i.sku, cantidad: String(i.cantidad), precio: '' })),
+    )
+    setMonto(c.monto != null ? String(c.monto) : '')
+    setClave((k) => k + 1)
+  }
+
+  // Lo que sumarían los renglones. Es la sugerencia, no el dato.
+  const sugerido = filas.reduce(
+    (t, f) => t + aNumero(f.cantidad || '0') * aNumero(f.precio || '0'),
+    0,
+  )
+  const escrito = aNumero(monto)
+  const hayMonto = monto.trim() !== '' && Number.isFinite(escrito)
+  const liquida = hayMonto ? escrito : sugerido
+  const difiere = hayMonto && sugerido > 0 && Math.abs(escrito - sugerido) >= 0.01
+
   return (
     <form action={accion} className="space-y-4">
+      {combos.length > 0 && (
+        <label className="block text-sm sm:max-w-xs">
+          <span className="mb-1 block font-medium">
+            Combo <span className="font-normal text-stone-400">(atajo)</span>
+          </span>
+          <select
+            defaultValue=""
+            aria-label="Combo guardado"
+            onChange={(e) => {
+              usarCombo(e.target.value)
+              e.target.value = ''
+            }}
+            className={campo}
+          >
+            <option value="">Cargar un combo guardado…</option>
+            {combos.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+                {c.monto != null ? ` · ${pesos(Number(c.monto))}` : ''}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-xs text-stone-500">
+            Llena los renglones y sugiere el monto. Después cambiás lo que haga falta.
+          </span>
+        </label>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">
           <span className="mb-1 block font-medium">¿De qué sede salió?</span>
@@ -116,7 +185,13 @@ export function FormVentaML({
           <div key={`${clave}-${i}`} className="flex items-end gap-2">
             <label className="min-w-0 flex-1 text-sm">
               <span className="mb-1 block text-xs text-stone-500">Producto</span>
-              <select name="sku" defaultValue={fila.sku} required className={campo}>
+              <select
+                name="sku"
+                value={fila.sku}
+                onChange={(e) => cambiar(i, 'sku', e.target.value)}
+                required
+                className={campo}
+              >
                 <option value="" disabled>
                   Elegí un producto…
                 </option>
@@ -135,7 +210,8 @@ export function FormVentaML({
                 name="cantidad"
                 min="1"
                 step="1"
-                defaultValue={fila.cantidad || '1'}
+                value={fila.cantidad}
+                onChange={(e) => cambiar(i, 'cantidad', e.target.value)}
                 required
                 className={campo}
               />
@@ -149,7 +225,8 @@ export function FormVentaML({
                 min="0"
                 step="0.01"
                 placeholder="0"
-                defaultValue={fila.precio}
+                value={fila.precio}
+                onChange={(e) => cambiar(i, 'precio', e.target.value)}
                 required
                 className={campo}
               />
@@ -176,6 +253,51 @@ export function FormVentaML({
         </button>
       </div>
 
+      {/* El precio publicado y lo que llega a la cuenta no son el mismo número:
+          entre medio están la comisión y el envío. El primero queda en los
+          renglones; el segundo es el que va al reporte. */}
+      <div className="space-y-2 rounded-md bg-stone-50 px-3 py-2.5">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm">
+            <span className="mb-1 block font-medium">¿Cuánto te liquidó Mercado Libre?</span>
+            <CampoDecimal
+              name="monto"
+              value={monto}
+              onChange={setMonto}
+              placeholder={sugerido > 0 ? String(Math.round(sugerido)) : '0'}
+              aria-label="Monto liquidado por Mercado Libre"
+              className={`${campo} w-40 tabular-nums`}
+            />
+          </label>
+          {sugerido > 0 && (
+            <button
+              type="button"
+              onClick={() => setMonto(String(Math.round(sugerido * 100) / 100))}
+              className="mb-2 text-xs text-stone-600 underline underline-offset-4 hover:text-stone-900"
+            >
+              usar los {pesos(sugerido)} publicados
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-stone-500">
+          Los renglones suman{' '}
+          <span className="tabular-nums">{pesos(sugerido)}</span> —lo que ve el
+          comprador—. Acá va lo que realmente entró a tu cuenta, después de la
+          comisión y el envío: es lo que usan el margen y el reporte.
+          {difiere && (
+            <span className="mt-0.5 block text-stone-700">
+              Diferencia: {pesos(Math.abs(sugerido - escrito))}{' '}
+              {escrito < sugerido ? 'menos' : 'más'} de lo publicado.
+            </span>
+          )}
+          {!hayMonto && (
+            <span className="mt-0.5 block">
+              Si lo dejás vacío se toman los {pesos(sugerido)} publicados.
+            </span>
+          )}
+        </p>
+      </div>
+
       {estado.error && (
         <p
           role="alert"
@@ -198,7 +320,7 @@ export function FormVentaML({
         disabled={pendiente}
         className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-800 disabled:opacity-60"
       >
-        {pendiente ? 'Cargando…' : 'Cargar venta'}
+        {pendiente ? 'Cargando…' : `Cargar venta por ${pesos(liquida)}`}
       </button>
     </form>
   )

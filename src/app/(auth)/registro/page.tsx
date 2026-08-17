@@ -71,12 +71,13 @@ export default function RegistroPage() {
           id="whatsapp"
           name="whatsapp"
           type="tel"
-          placeholder="+54 9 11 5555-0000"
+          placeholder="1155550000"
           autoComplete="tel"
           defaultValue={estado.valores?.whatsapp ?? ''}
           className={campo}
         />
-        <p className="text-xs text-tinta-suave">Es por donde te avisamos cuando el pedido esté listo.</p>
+
+        <p className="text-xs text-tinta-suave">Sin el 0, sin el 15.</p>
       </div>
 
       <div className="space-y-1.5">
