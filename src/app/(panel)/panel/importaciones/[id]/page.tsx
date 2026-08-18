@@ -21,7 +21,6 @@ type ItemVista = {
   utiles: number
   costo_unitario_origen: number
   costo_unitario_ars: number | null
-  gastos_prorrateados: number | null
   costo_unitario_final: number | null
   pct_rotura: number | null
 }
@@ -56,7 +55,6 @@ export default async function DetalleImportacion({
     codigo: string
     estado: string
     transporte_texto: string | null
-    gastos_totales: number
     mercaderia_ars: number
     total_ars: number
     sede_recepcion: string | null
@@ -146,7 +144,7 @@ export default async function DetalleImportacion({
           <h2 className="font-medium">Productos</h2>
           <p className="mt-0.5 text-xs text-stone-500">
             {recibida
-              ? 'Con el costo final de cada uno, ya prorrateado.'
+              ? 'Con el costo de cada uno, ya convertido a pesos.'
               : 'Qué viene y a qué precio de origen.'}
           </p>
         </div>
@@ -159,9 +157,7 @@ export default async function DetalleImportacion({
                   <th className="py-2 font-normal">Producto</th>
                   <th className="px-2 py-2 text-right font-normal">Llegaron</th>
                   <th className="px-2 py-2 text-right font-normal">Rotas</th>
-                  <th className="px-2 py-2 text-right font-normal">Mercadería</th>
-                  <th className="px-2 py-2 text-right font-normal">Gastos</th>
-                  <th className="px-2 py-2 text-right font-normal">Costo final</th>
+                  <th className="px-2 py-2 text-right font-normal">Costo unitario</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
@@ -186,12 +182,6 @@ export default async function DetalleImportacion({
                         <span className="text-stone-300">—</span>
                       )}
                     </td>
-                    <td className="px-2 py-2 text-right tabular-nums text-stone-500">
-                      {pesosCosto(Number(i.costo_unitario_ars))}
-                    </td>
-                    <td className="px-2 py-2 text-right tabular-nums text-stone-500">
-                      {pesos(Number(i.gastos_prorrateados))}
-                    </td>
                     <td className="px-2 py-2 text-right tabular-nums font-medium">
                       {pesosCosto(Number(i.costo_unitario_final))}
                     </td>
@@ -205,7 +195,6 @@ export default async function DetalleImportacion({
               opciones={opciones}
               items={renglones}
               tipoCambio={Number(imp.tipo_cambio) || 1}
-              gastos={Number(vista?.gastos_totales ?? 0)}
             />
           )}
         </div>
@@ -258,15 +247,14 @@ export default async function DetalleImportacion({
           <p className="mt-3 text-xs text-stone-500">
             La rotura que aparece armando se atribuye al último embarque
             recibido que trajo esos insumos. Ninguna de las dos encarece el
-            producto: el costo es el de la mercadería más los gastos.
+            producto: el costo es el de la mercadería.
           </p>
         </section>
       )}
 
       {vista && (
         <p className="text-xs text-stone-500">
-          Mercadería {pesos(Number(vista.mercaderia_ars))} + gastos{' '}
-          {pesos(Number(vista.gastos_totales))} ={' '}
+          Mercadería:{' '}
           <strong className="text-stone-700">{pesos(Number(vista.total_ars))}</strong>
         </p>
       )}

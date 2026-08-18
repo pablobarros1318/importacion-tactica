@@ -59,7 +59,7 @@ export default async function Importaciones() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Importaciones</h1>
           <p className="mt-1 text-sm text-stone-500">
-            Cada embarque con sus gastos. Al recibirlo, el stock entra y cada
+            Cada embarque con lo que trae. Al recibirlo, el stock entra y cada
             producto queda con su costo real.
           </p>
         </div>

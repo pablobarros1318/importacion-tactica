@@ -133,7 +133,7 @@ export function FormVariante({
             className={campo}
           />
           <span className="mt-1 block text-xs text-stone-500">
-            Sirve para prorratear el flete por peso en las importaciones.
+            Se le muestra al cliente para que sepa cuánto rinde un paquete.
           </span>
         </label>
 

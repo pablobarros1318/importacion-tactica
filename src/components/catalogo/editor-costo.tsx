@@ -120,8 +120,8 @@ export function EditorCosto({
 
       <p className="mt-2 text-xs text-stone-500">
         Es lo que te cuesta a vos cada unidad. Se usa para el margen. Cuando
-        cargues una importación, este número se actualiza solo con el costo real
-        (mercadería + flete + gastos).
+        cargues una importación, este número se actualiza solo con el costo del
+        embarque, convertido a pesos.
       </p>
     </form>
   )

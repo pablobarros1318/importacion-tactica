@@ -15,7 +15,7 @@ export type ItemRecepcion = {
 /**
  * Recepción del embarque.
  *
- * Es el paso que aplica todo: entra el stock, se prorratean los gastos y cada
+ * Es el paso que aplica todo: entra el stock y cada
  * producto queda con su costo real. Por eso viene con la advertencia: después
  * de esto la importación no se edita más.
  */
@@ -106,7 +106,7 @@ export function FormRecepcion({
 
       <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
         Al confirmar, el stock entra en la sede de recepción y cada producto
-        queda con su costo real (mercadería + gastos prorrateados). Después de
+        queda con su costo real, convertido a pesos. Después de
         esto el embarque no se edita más.
         {totalRotas > 0 && (
           <>

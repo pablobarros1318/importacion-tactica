@@ -140,6 +140,22 @@ export interface VistaStockBajo {
   faltante: number
 }
 
+/** Una fila de `v_stock_consolidado`: el total y el reparto por sede. */
+export interface VistaStockConsolidado {
+  variante_id: number
+  sku: string
+  producto: string
+  clase: 'insumo' | 'armado' | 'simple'
+  stock_total: number
+  reservado_total: number
+  disponible_total: number
+  costo_actual: number
+  valorizado: number
+  /** Cantidad por código de sede: { BANFIELD: 12, "MONTE-GRANDE": 3 }. Las
+   *  sedes sin stock cargado no aparecen; hay que leerlas como cero. */
+  por_sede: Record<string, number | string> | null
+}
+
 export interface VistaPendienteArmado {
   pedido_id: number
   pedido: string

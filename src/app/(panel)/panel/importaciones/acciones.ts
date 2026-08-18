@@ -47,18 +47,12 @@ export async function guardarImportacion(
     codigo,
     transporte: txt(formData.get('transporte')),
     moneda_origen: txt(formData.get('moneda_origen')) || 'USD',
-    tipo_cambio: num(formData.get('tipo_cambio')) || 1,
+    // Vacío viaja vacío y la base lo toma como 1. Mandar 0 dejaría todos
+    // los costos en cero sin que nadie lo haya pedido.
+    tipo_cambio: txt(formData.get('tipo_cambio')),
     fecha_pedido: txt(formData.get('fecha_pedido')),
     fecha_embarque: txt(formData.get('fecha_embarque')),
     fecha_arribo: txt(formData.get('fecha_arribo')),
-    flete_internacional: num(formData.get('flete_internacional')),
-    seguro: num(formData.get('seguro')),
-    derechos_aduana: num(formData.get('derechos_aduana')),
-    tasa_estadistica: num(formData.get('tasa_estadistica')),
-    honorarios_despachante: num(formData.get('honorarios_despachante')),
-    flete_local: num(formData.get('flete_local')),
-    otros_gastos: num(formData.get('otros_gastos')),
-    criterio_prorrateo: txt(formData.get('criterio_prorrateo')) || 'valor',
     sede_recepcion_id: txt(formData.get('sede_recepcion_id')),
     notas: txt(formData.get('notas')),
   }

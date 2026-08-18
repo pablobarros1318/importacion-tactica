@@ -73,8 +73,14 @@ export async function ajustarStock(
   }
 }
 
-/** Primera carga de stock de un SKU en una sede. */
-export async function cargarStock(
+/**
+ * Sumar stock que entró.
+ *
+ * Antes esto llamaba a `fn_cargar_stock`, que FIJA el número en vez de sumarlo:
+ * con 10 en la sede y 30 escritos quedaban 30. Es lo que hace "Contar", que ya
+ * existe aparte. Acá se agrega, que es lo que dice el botón.
+ */
+export async function agregarStock(
   _prev: EstadoStock,
   formData: FormData,
 ): Promise<EstadoStock> {
@@ -86,35 +92,46 @@ export async function cargarStock(
   const costo = numeroDe(formData.get('costo'))
   const minimo = numeroDe(formData.get('minimo'))
   const ubicacion = String(formData.get('ubicacion') ?? '').trim()
+  const motivo = String(formData.get('motivo') ?? '').trim()
   const valores = {
     sku,
     cantidad: String(formData.get('cantidad') ?? ''),
     costo: String(formData.get('costo') ?? ''),
     minimo: String(formData.get('minimo') ?? ''),
     ubicacion,
+    motivo,
   }
 
   if (!sku) return { error: 'Elegí el producto.', valores }
-  if (cantidad === null || cantidad < 0) return { error: 'Poné cuántas unidades hay.', valores }
+  if (cantidad === null || cantidad <= 0) {
+    return { error: 'Poné cuántas unidades entraron: tiene que ser más que cero.', valores }
+  }
 
   const supabase = await createClient()
-  const { error } = await supabase.rpc('fn_cargar_stock', {
+  // Devuelve el total que quedó, que es lo que hay que mostrar: así se ve de
+  // una que la suma se hizo como se esperaba.
+  const { data, error } = await supabase.rpc('fn_agregar_stock', {
     p_sede_id: sede_id,
     p_sku: sku,
     p_cantidad: cantidad,
     p_costo: costo,
     p_minimo: minimo,
     p_ubicacion: ubicacion || null,
+    p_motivo: motivo || null,
     p_usuario_id: perfil.id,
   })
 
   if (error) {
-    loguear('cargarStock', error)
+    loguear('agregarStock', error)
     return { error: error.message, valores }
   }
 
   revalidatePath('/panel/stock')
-  return { ok: `${sku}: ${cantidad} unidades cargadas.` }
+  revalidatePath('/panel')
+  const total = Number(data ?? 0)
+  return {
+    ok: `${sku}: entraron ${cantidad}. Ahora hay ${total} en total.`,
+  }
 }
 
 /** Mínimo y ubicación. No mueven stock. */

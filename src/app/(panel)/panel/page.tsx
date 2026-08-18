@@ -3,9 +3,10 @@ import { createClient } from '@/lib/supabase/server'
 import { getSedeActiva } from '@/lib/sede'
 import { requireAdmin } from '@/lib/auth'
 import { numero, pesos, haceCuanto, hoyLocal, sumarDias } from '@/lib/format'
+import { TablaSedes, type SedeColumna } from '@/components/stock/tabla-sedes'
 import type {
   VistaResumenArmado,
-  VistaStockBajo,
+  VistaStockConsolidado,
   VistaPendienteArmado,
   VistaSugerenciaTransferencia,
   Pedido,
@@ -137,15 +138,10 @@ export default async function InicioPanel() {
   const sede = await getSedeActiva()
   const supabase = await createClient()
 
-  const [armado, pendientes, stockBajo, sugerencias, pedidos, resumen] = await Promise.all([
+  const [armado, pendientes, sugerencias, pedidos, resumen, consolidado, sedesRes, minimosRes] =
+    await Promise.all([
     supabase.from('v_resumen_armado').select('*').order('libres', { ascending: false }),
     supabase.from('v_pendiente_armado').select('*').order('created_at').limit(8),
-    supabase
-      .from('v_stock_bajo')
-      .select('*')
-      .eq('sede_id', sede?.id ?? -1)
-      .order('faltante', { ascending: false })
-      .limit(6),
     supabase.from('v_sugerencia_transferencia').select('*').limit(5),
     supabase
       .from('pedidos')
@@ -158,11 +154,35 @@ export default async function InicioPanel() {
       p_desde: sumarDias(hoyLocal(), -29),
       p_hasta: hoyLocal(),
     }),
+    // El stock de todo, con el reparto por sede adentro de `por_sede`.
+    supabase.from('v_stock_consolidado').select('*').order('producto'),
+    supabase.from('sedes').select('id, codigo, nombre').eq('activo', true).order('id'),
+    supabase.from('stock').select('variante_id, stock_minimo'),
   ])
 
   const filasArmado = (armado.data ?? []) as VistaResumenArmado[]
   const filasPendientes = (pendientes.data ?? []) as VistaPendienteArmado[]
-  const filasStockBajo = (stockBajo.data ?? []) as VistaStockBajo[]
+  const sedesColumna = (sedesRes.data ?? []) as SedeColumna[]
+
+  // El mínimo del SKU es la suma de los mínimos de cada sede: si en Banfield
+  // se quieren 10 y en Monte Grande 5, por debajo de 15 en total hay que
+  // reponer aunque una sola sede esté sobrada.
+  const minimos = new Map<number, number>()
+  for (const m of (minimosRes.data ?? []) as { variante_id: number; stock_minimo: number }[]) {
+    const id = Number(m.variante_id)
+    minimos.set(id, (minimos.get(id) ?? 0) + Number(m.stock_minimo ?? 0))
+  }
+
+  // Se muestra lo que se vende y lo que se arma; los insumos tienen su propia
+  // pantalla y acá sólo harían ruido. Primero lo que está por debajo del
+  // mínimo, que es lo que hay que mirar.
+  const filasConsolidado = ((consolidado.data ?? []) as VistaStockConsolidado[])
+    .filter((f) => f.clase !== 'insumo')
+    .sort((a, b) => {
+      const faltaA = Number(minimos.get(Number(a.variante_id)) ?? 0) - Number(a.stock_total)
+      const faltaB = Number(minimos.get(Number(b.variante_id)) ?? 0) - Number(b.stock_total)
+      return faltaB - faltaA || a.producto.localeCompare(b.producto, 'es')
+    })
   const filasSugerencias = (sugerencias.data ?? []) as VistaSugerenciaTransferencia[]
   const filasPedidos = (pedidos.data ?? []) as Pick<
     Pedido,
@@ -385,30 +405,15 @@ export default async function InicioPanel() {
 
         <div className="space-y-4">
           <Panel
-            titulo="Stock bajo"
-            descripcion={sede ? `En ${sede.nombre}.` : undefined}
+            titulo="Stock"
+            descripcion="Lo que hay en total y dónde está. En ámbar, lo que está en el mínimo o por debajo."
             accion={{ href: '/panel/stock', label: 'Ver stock' }}
           >
-            {filasStockBajo.length === 0 ? (
-              <Vacio>Nada por debajo del mínimo.</Vacio>
-            ) : (
-              <ul className="divide-y divide-stone-100 text-sm">
-                {filasStockBajo.map((f) => (
-                  <li key={f.sku}>
-                    <Link
-                      href={`/panel/stock?q=${encodeURIComponent(f.sku)}`}
-                      className="-mx-2 flex items-center gap-3 rounded-md px-2 py-2 hover:bg-stone-50"
-                    >
-                      <span>{f.producto}</span>
-                      <span className="text-xs text-stone-400">{f.sku}</span>
-                      <span className="ml-auto tabular-nums text-amber-600">
-                        faltan {numero(Number(f.faltante))}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <TablaSedes
+              filas={filasConsolidado}
+              sedes={sedesColumna}
+              minimos={minimos}
+            />
           </Panel>
 
           <Panel

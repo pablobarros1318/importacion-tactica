@@ -136,13 +136,19 @@ export default async function Stock({
 
   const opciones: OpcionSku[] = (
     (catalogoRes.data ?? []) as { sku: string; nombre_corto: string | null; producto: string }[]
-  ).map((c) => ({
-    sku: c.sku,
-    nombre: c.nombre_corto ?? c.producto,
-    tiene_stock: Number(porVariante.get(
-      Number(variantes.find((v) => v.sku === c.sku)?.id ?? 0),
-    )?.cantidad ?? 0) > 0,
-  }))
+  ).map((c) => {
+    // Cuánto hay hoy de ese SKU en esta sede: el formulario lo usa para
+    // mostrar en cuánto va a quedar el total antes de confirmar.
+    const cantidad = Number(
+      porVariante.get(Number(variantes.find((v) => v.sku === c.sku)?.id ?? 0))?.cantidad ?? 0,
+    )
+    return {
+      sku: c.sku,
+      nombre: c.nombre_corto ?? c.producto,
+      tiene_stock: cantidad > 0,
+      cantidad,
+    }
+  })
 
   const filtro = (cambios: Record<string, string>) => {
     const p = new URLSearchParams()

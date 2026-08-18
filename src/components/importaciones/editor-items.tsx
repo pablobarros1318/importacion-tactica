@@ -17,13 +17,11 @@ export function EditorItems({
   opciones,
   items,
   tipoCambio,
-  gastos,
 }: {
   importacionId: number
   opciones: OpcionSku[]
   items: Renglon[]
   tipoCambio: number
-  gastos: number
 }) {
   const [estado, accion, pendiente] = useActionState(guardarItems, inicial)
   const [filas, setFilas] = useState<Renglon[]>(
@@ -121,7 +119,6 @@ export function EditorItems({
         {unidades > 0 && (
           <span className="text-xs text-stone-500">
             {unidades.toLocaleString('es-AR')} unidades · mercadería {pesos(mercaderia)}
-            {gastos > 0 && ` + ${pesos(gastos)} de gastos = ${pesos(mercaderia + gastos)}`}
           </span>
         )}
       </div>

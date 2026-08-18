@@ -20,14 +20,6 @@ export type Importacion = {
   fecha_pedido: string | null
   fecha_embarque: string | null
   fecha_arribo: string | null
-  flete_internacional: number
-  seguro: number
-  derechos_aduana: number
-  tasa_estadistica: number
-  honorarios_despachante: number
-  flete_local: number
-  otros_gastos: number
-  criterio_prorrateo: string
   sede_recepcion_id: number | null
   notas: string | null
 }
@@ -37,16 +29,6 @@ export const TRANSPORTES = [
   { valor: 'maritimo', label: 'Barco' },
   { valor: 'courier', label: 'Courier' },
   { valor: 'terrestre', label: 'Camión' },
-]
-
-const GASTOS: { name: keyof Importacion; label: string }[] = [
-  { name: 'flete_internacional', label: 'Flete internacional' },
-  { name: 'seguro', label: 'Seguro' },
-  { name: 'derechos_aduana', label: 'Derechos de aduana' },
-  { name: 'tasa_estadistica', label: 'Tasa estadística' },
-  { name: 'honorarios_despachante', label: 'Despachante' },
-  { name: 'flete_local', label: 'Flete local' },
-  { name: 'otros_gastos', label: 'Otros gastos' },
 ]
 
 export function FormImportacion({
@@ -121,14 +103,21 @@ export function FormImportacion({
 
         <label className="text-sm">
           <span className="mb-1 block font-medium">Tipo de cambio</span>
+          {/* Sin `required` y con un valor de verdad. Antes decía
+              `?? v('tipo_cambio') ?? '1'`, pero `v()` devuelve cadena vacía y
+              no `undefined`, así que el `?? '1'` no corría nunca: el campo
+              salía vacío, `required` frenaba el envío y el navegador mostraba
+              su globito en vez de un error en pantalla. El formulario no hacía
+              nada y no se entendía por qué. */}
           <CampoDecimal
             name="tipo_cambio"
-            required
-            defaultValue={estado.valores?.tipo_cambio ?? v('tipo_cambio') ?? '1'}
+            defaultValue={estado.valores?.tipo_cambio || v('tipo_cambio') || '1'}
             className={campo}
           />
           <span className="mt-1 block text-xs text-stone-500">
-            A cuánto convertís la moneda de origen a pesos.
+            A cuántos pesos equivale 1 de la moneda de arriba. El costo de cada
+            producto se carga en esa moneda y entra al stock convertido. Si ya
+            cargás los costos en pesos, dejalo en 1.
           </span>
         </label>
 
@@ -167,38 +156,6 @@ export function FormImportacion({
           />
         </label>
       </div>
-
-      <fieldset className="rounded-md bg-stone-50 px-3 py-3">
-        <legend className="px-1 text-sm font-medium">Gastos del embarque</legend>
-        <p className="mb-3 text-xs text-stone-500">
-          Todo lo que pagaste además de la mercadería. Se reparte entre los
-          productos y pasa a formar parte del costo de cada unidad.
-        </p>
-        <div className="grid gap-3 sm:grid-cols-4">
-          {GASTOS.map((g) => (
-            <label key={g.name} className="text-sm">
-              <span className="mb-1 block text-xs text-stone-600">{g.label}</span>
-              <CampoDecimal
-                name={g.name}
-                defaultValue={v(g.name) || '0'}
-                className={campo}
-              />
-            </label>
-          ))}
-          <label className="text-sm">
-            <span className="mb-1 block text-xs text-stone-600">¿Cómo se reparten?</span>
-            <select
-              name="criterio_prorrateo"
-              defaultValue={v('criterio_prorrateo') || 'valor'}
-              className={campo}
-            >
-              <option value="valor">Por valor</option>
-              <option value="peso">Por peso</option>
-              <option value="unidades">Por unidades</option>
-            </select>
-          </label>
-        </div>
-      </fieldset>
 
       <label className="block text-sm">
         <span className="mb-1 block font-medium">
