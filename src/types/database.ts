@@ -154,6 +154,9 @@ export interface VistaStockConsolidado {
   /** Cantidad por código de sede: { BANFIELD: 12, "MONTE-GRANDE": 3 }. Las
    *  sedes sin stock cargado no aparecen; hay que leerlas como cero. */
   por_sede: Record<string, number | string> | null
+  /** El nombre de la variante: es el que distingue "Tapa dorada" de "Tapa
+   *  plateada", que como producto se llaman las dos "Tapa". */
+  nombre_corto: string | null
 }
 
 export interface VistaPendienteArmado {

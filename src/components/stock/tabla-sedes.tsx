@@ -1,37 +1,53 @@
 import Link from 'next/link'
 import { numero } from '@/lib/format'
-import type { VistaStockConsolidado } from '@/types/database'
 
 export type SedeColumna = { id: number; codigo: string; nombre: string }
+
+export type FilaSedes = {
+  /** Para la key de React y el enlace. */
+  sku: string
+  nombre: string
+  /** El número grande de la izquierda: el total entre todas las sedes. */
+  total: number
+  /** Cantidad por código de sede. Una sede que no aparece se lee como cero. */
+  porSede: Record<string, number | string> | null
+  /** Si el total está en el mínimo o por debajo, se marca. */
+  minimo?: number
+  /** Un número más, propio de cada tablero. */
+  extra?: number
+}
 
 /**
  * Cuánto hay de cada cosa y dónde está.
  *
  * Las columnas de sede salen de la tabla `sedes`, no escritas a mano: el día
  * que aparece una sede nueva —como pasó con la de Full de Mercado Libre— la
- * columna aparece sola. Una sede sin fila de stock para ese SKU no viene en el
- * jsonb, y hay que leerla como cero y no como "no sé".
+ * columna aparece sola. Una sede sin fila para ese SKU no viene en el jsonb, y
+ * hay que leerla como cero y no como "no sé".
  *
- * "Real" es la suma de todas las sedes: es lo que hay en la calle, sin contar
- * lo que se podría armar. Se muestra primero porque es la pregunta que uno se
- * hace antes que ninguna.
+ * Lo que está en cero no se muestra. Un tablero se mira de reojo, y una lista
+ * llena de ceros esconde justo lo que hay que ver. El filtrado se hace afuera,
+ * donde se sabe qué significa "no hay" para cada tablero: en el stock es no
+ * tener unidades; en lo armado es no tener ni armadas ni para armar.
  */
 export function TablaSedes({
   filas,
   sedes,
-  minimos,
+  titulo = 'Real',
+  extraTitulo,
+  vacio = 'Todavía no hay stock cargado.',
 }: {
-  filas: VistaStockConsolidado[]
+  filas: FilaSedes[]
   sedes: SedeColumna[]
-  /** Mínimo por variante, sumado entre sedes. Sirve para marcar en rojo. */
-  minimos?: Map<number, number>
+  /** Cómo se llama la columna del total. */
+  titulo?: string
+  /** Si se pasa, se agrega una columna al final con el `extra` de cada fila. */
+  extraTitulo?: string
+  vacio?: string
 }) {
   if (filas.length === 0) {
-    return <p className="py-4 text-center text-sm text-stone-400">Todavía no hay stock cargado.</p>
+    return <p className="py-4 text-center text-sm text-stone-400">{vacio}</p>
   }
-
-  const de = (f: VistaStockConsolidado, codigo: string) =>
-    Number(f.por_sede?.[codigo] ?? 0)
 
   return (
     <div className="-mx-4 overflow-x-auto px-4">
@@ -39,19 +55,22 @@ export function TablaSedes({
         <thead>
           <tr className="border-b border-stone-100 text-left text-xs text-stone-500">
             <th className="py-2 font-normal">Producto</th>
-            <th className="px-3 py-2 text-right font-normal">Real</th>
+            <th className="px-3 py-2 text-right font-normal">{titulo}</th>
             {sedes.map((s) => (
               <th key={s.id} className="px-3 py-2 text-right font-normal whitespace-nowrap">
                 {s.nombre}
               </th>
             ))}
+            {extraTitulo && (
+              <th className="px-3 py-2 text-right font-normal whitespace-nowrap">
+                {extraTitulo}
+              </th>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-stone-100">
           {filas.map((f) => {
-            const total = Number(f.stock_total)
-            const minimo = Number(minimos?.get(Number(f.variante_id)) ?? 0)
-            const bajo = minimo > 0 && total <= minimo
+            const bajo = (f.minimo ?? 0) > 0 && f.total <= (f.minimo ?? 0)
 
             return (
               <tr key={f.sku}>
@@ -60,7 +79,7 @@ export function TablaSedes({
                     href={`/panel/stock?q=${encodeURIComponent(f.sku)}`}
                     className="underline-offset-4 hover:underline"
                   >
-                    {f.producto}
+                    {f.nombre}
                   </Link>
                   <span className="ml-2 text-xs text-stone-400">{f.sku}</span>
                 </td>
@@ -70,15 +89,15 @@ export function TablaSedes({
                     bajo ? 'text-amber-600' : '',
                   ].join(' ')}
                 >
-                  {numero(total)}
+                  {numero(f.total)}
                   {bajo && (
                     <span className="ml-1 text-xs font-normal">
-                      (mín. {numero(minimo)})
+                      (mín. {numero(f.minimo ?? 0)})
                     </span>
                   )}
                 </td>
                 {sedes.map((s) => {
-                  const n = de(f, s.codigo)
+                  const n = Number(f.porSede?.[s.codigo] ?? 0)
                   return (
                     <td
                       key={s.id}
@@ -92,6 +111,11 @@ export function TablaSedes({
                     </td>
                   )
                 })}
+                {extraTitulo && (
+                  <td className="px-3 py-2 text-right tabular-nums text-stone-500">
+                    {(f.extra ?? 0) > 0 ? `+${numero(f.extra ?? 0)}` : '—'}
+                  </td>
+                )}
               </tr>
             )
           })}

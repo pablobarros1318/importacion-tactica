@@ -3,7 +3,11 @@ import { createClient } from '@/lib/supabase/server'
 import { getSedeActiva } from '@/lib/sede'
 import { requireAdmin } from '@/lib/auth'
 import { numero, pesos, haceCuanto, hoyLocal, sumarDias } from '@/lib/format'
-import { TablaSedes, type SedeColumna } from '@/components/stock/tabla-sedes'
+import {
+  TablaSedes,
+  type SedeColumna,
+  type FilaSedes,
+} from '@/components/stock/tabla-sedes'
 import type {
   VistaResumenArmado,
   VistaStockConsolidado,
@@ -160,7 +164,6 @@ export default async function InicioPanel() {
     supabase.from('stock').select('variante_id, stock_minimo'),
   ])
 
-  const filasArmado = (armado.data ?? []) as VistaResumenArmado[]
   const filasPendientes = (pendientes.data ?? []) as VistaPendienteArmado[]
   const sedesColumna = (sedesRes.data ?? []) as SedeColumna[]
 
@@ -173,16 +176,37 @@ export default async function InicioPanel() {
     minimos.set(id, (minimos.get(id) ?? 0) + Number(m.stock_minimo ?? 0))
   }
 
-  // Se muestra lo que se vende y lo que se arma; los insumos tienen su propia
-  // pantalla y acá sólo harían ruido. Primero lo que está por debajo del
-  // mínimo, que es lo que hay que mirar.
-  const filasConsolidado = ((consolidado.data ?? []) as VistaStockConsolidado[])
-    .filter((f) => f.clase !== 'insumo')
-    .sort((a, b) => {
-      const faltaA = Number(minimos.get(Number(a.variante_id)) ?? 0) - Number(a.stock_total)
-      const faltaB = Number(minimos.get(Number(b.variante_id)) ?? 0) - Number(b.stock_total)
-      return faltaB - faltaA || a.producto.localeCompare(b.producto, 'es')
-    })
+  // Todo lo que hay físicamente, insumos incluidos: en este negocio los
+  // frascos y las tapas son la mayor parte del inventario, y un panel que dice
+  // "lo que hay" y los esconde miente. Lo que está en cero no entra: un
+  // tablero se mira de reojo, y una lista llena de ceros esconde lo que hay
+  // que ver. Primero lo que está por debajo del mínimo.
+  const filasStock: FilaSedes[] = ((consolidado.data ?? []) as VistaStockConsolidado[])
+    .filter((f) => Number(f.stock_total) > 0)
+    .map((f) => ({
+      sku: f.sku,
+      nombre: f.nombre_corto ?? f.producto,
+      total: Number(f.stock_total),
+      porSede: f.por_sede,
+      minimo: minimos.get(Number(f.variante_id)) ?? 0,
+    }))
+    .sort((a, b) => (b.minimo ?? 0) - b.total - ((a.minimo ?? 0) - a.total)
+      || a.nombre.localeCompare(b.nombre, 'es'))
+
+  // Lo armado sigue el mismo criterio, con una vuelta: acá "no hay" no es
+  // tener cero armadas, es no poder entregar ninguna. Un decant sin armar pero
+  // con insumos para 600 tiene que aparecer, porque es justamente lo que hay
+  // que ir a armar.
+  const filasArmado: FilaSedes[] = ((armado.data ?? []) as VistaResumenArmado[])
+    .filter((f) => Number(f.total_vendible) > 0)
+    .map((f) => ({
+      sku: f.sku,
+      nombre: f.nombre_corto ?? f.producto,
+      total: Number(f.libres),
+      porSede: f.libres_por_sede,
+      extra: Number(f.se_pueden_armar_mas),
+    }))
+    .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre, 'es'))
   const filasSugerencias = (sugerencias.data ?? []) as VistaSugerenciaTransferencia[]
   const filasPedidos = (pedidos.data ?? []) as Pick<
     Pedido,
@@ -193,7 +217,7 @@ export default async function InicioPanel() {
   // mejor decirlo claro que mostrar todo en cero como si fuera normal.
   const sinBase = armado.error && armado.error.code === '42P01'
 
-  const totalLibres = filasArmado.reduce((a, f) => a + Number(f.libres ?? 0), 0)
+  const totalLibres = filasArmado.reduce((a, f) => a + f.total, 0)
   const porArmar = filasPendientes.reduce((a, f) => a + Number(f.hay_que_armar ?? 0), 0)
   const sinPagar = filasPedidos.filter(
     (p) => p.estado_pago === 'pendiente' && p.estado !== 'pendiente',
@@ -296,46 +320,33 @@ export default async function InicioPanel() {
         </section>
       )}
 
+      {/* El stock va primero y a lo ancho: es lo que se mira al entrar, y con
+          una columna por sede en media pantalla no entra. */}
+      <Panel
+        titulo="Stock"
+        descripcion="Lo que hay y dónde está. En ámbar, lo que está en el mínimo o por debajo. Lo que está en cero no se muestra."
+        accion={{ href: '/panel/stock', label: 'Ver stock' }}
+      >
+        <TablaSedes
+          filas={filasStock}
+          sedes={sedesColumna}
+          vacio="Todavía no hay nada con stock."
+        />
+      </Panel>
+
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel
           titulo="¿Qué dejé armado?"
-          descripcion="Lo que ya está listo para salir, descontando lo comprometido."
+          descripcion="Listo para salir, descontando lo comprometido. Lo que no se puede entregar ni armar no se muestra."
           accion={{ href: '/panel/armado', label: 'Ir a armado' }}
         >
-          {filasArmado.length === 0 ? (
-            <Vacio>Todavía no hay productos armados cargados.</Vacio>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-stone-500">
-                  <th className="pb-2 font-normal">Producto</th>
-                  <th className="pb-2 text-right font-normal">Libres</th>
-                  <th className="pb-2 text-right font-normal">Se pueden armar</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {filasArmado.slice(0, 6).map((f) => (
-                  <tr key={f.sku} className="hover:bg-stone-50">
-                    <td className="py-2">
-                      <Link
-                        href={`/panel/stock?q=${encodeURIComponent(f.sku)}`}
-                        className="hover:underline"
-                      >
-                        <span className="font-medium">{f.nombre_corto ?? f.producto}</span>
-                        <span className="ml-2 text-xs text-stone-400">{f.sku}</span>
-                      </Link>
-                    </td>
-                    <td className="py-2 text-right font-semibold tabular-nums">
-                      {numero(Number(f.libres))}
-                    </td>
-                    <td className="py-2 text-right tabular-nums text-stone-500">
-                      +{numero(Number(f.se_pueden_armar_mas))}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <TablaSedes
+            filas={filasArmado}
+            sedes={sedesColumna}
+            titulo="Libres"
+            extraTitulo="Se pueden armar"
+            vacio="No hay nada armado ni para armar."
+          />
         </Panel>
 
         <Panel
@@ -404,18 +415,6 @@ export default async function InicioPanel() {
         </Panel>
 
         <div className="space-y-4">
-          <Panel
-            titulo="Stock"
-            descripcion="Lo que hay en total y dónde está. En ámbar, lo que está en el mínimo o por debajo."
-            accion={{ href: '/panel/stock', label: 'Ver stock' }}
-          >
-            <TablaSedes
-              filas={filasConsolidado}
-              sedes={sedesColumna}
-              minimos={minimos}
-            />
-          </Panel>
-
           <Panel
             titulo="Transferencias sugeridas"
             accion={{ href: '/panel/transferencias', label: 'Transferir' }}
