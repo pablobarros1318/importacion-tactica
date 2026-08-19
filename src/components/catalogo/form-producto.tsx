@@ -6,12 +6,13 @@ import {
   actualizarProducto,
   type EstadoABM,
 } from '@/app/(panel)/panel/catalogo/acciones'
+import { conSangria, rutaTexto, type NodoCategoria } from '@/lib/categorias'
 
 const inicial: EstadoABM = {}
 const campo =
   'w-full rounded-md border border-stone-300 px-2.5 py-1.5 text-sm outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900'
 
-export type Opcion = { id: number; nombre: string }
+export type Opcion = NodoCategoria
 
 export type ProductoEditable = {
   id: number
@@ -110,18 +111,26 @@ export function FormProducto({
 
         <label className="text-sm">
           <span className="mb-1 block font-medium">Categoría</span>
+          {/* El árbol entero en un solo desplegable, con sangría por nivel. Se
+              elige el punto más bajo que aplique a TODAS las variantes; lo que
+              distingue a una de otra se pone en la variante. */}
           <select
             name="categoria_id"
             defaultValue={producto?.categoria_id ?? ''}
             className={campo}
           >
             <option value="">— sin categoría —</option>
-            {categorias.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
+            {conSangria(categorias).map(({ cat, etiqueta }) => (
+              <option key={cat.id} value={cat.id}>
+                {etiqueta}
               </option>
             ))}
           </select>
+          {producto?.categoria_id != null && (
+            <span className="mt-1 block text-xs text-stone-500">
+              {rutaTexto(categorias, producto.categoria_id)}
+            </span>
+          )}
         </label>
 
       </div>

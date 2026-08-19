@@ -10,7 +10,7 @@ export default async function NuevoProducto() {
   const supabase = await createClient()
 
   const [cats] = await Promise.all([
-    supabase.from('categorias').select('id, nombre').eq('activo', true).order('orden'),
+    supabase.from('categorias').select('id, nombre, slug, padre_id, orden').eq('activo', true).order('orden'),
   ])
 
   return (

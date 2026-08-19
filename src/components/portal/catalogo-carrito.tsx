@@ -18,8 +18,20 @@ import {
   type Unidad,
 } from '@/lib/unidades'
 import { Destello, Monograma } from '@/components/marca'
+import { caminoHasta, hijasDe, normalizarRama } from '@/lib/categorias'
 
 const inicial: EstadoPortal = {}
+
+/** El botón de un filtro. El nivel sólo cambia el tamaño, no la lógica. */
+function solapa(activa: boolean, nivel: number): string {
+  return [
+    'rounded-full border whitespace-nowrap transition',
+    nivel === 0 ? 'px-4 py-1.5 text-sm' : 'px-3 py-1 text-xs',
+    activa
+      ? 'border-oro bg-tinta text-crema-hueso'
+      : 'border-arena bg-crema-hueso text-tinta-suave hover:border-oro hover:text-tinta',
+  ].join(' ')
+}
 
 export type Escala = { desde: number; hasta: number | null; precio: number }
 
@@ -40,6 +52,9 @@ export type Producto = {
   categoria: string
   categoria_slug: string
   categoria_orden: number
+  /** Todas las categorías bajo las que tiene que aparecer, de la raíz para
+   *  abajo: la rama del producto más la de la variante. */
+  categoria_rama: number[] | null
   unidad: Unidad
   /** Lo que pesa una pieza. Sólo para decirle al cliente cuánto le rinde. */
   peso_gr: number | null
@@ -55,7 +70,15 @@ export type Producto = {
 }
 
 export type Sede = { id: number; nombre: string; direccion: string | null }
-export type Categoria = { slug: string; nombre: string; productos: number }
+export type Categoria = {
+  id: number
+  padre_id: number | null
+  slug: string
+  nombre: string
+  nivel: number
+  orden: number
+  productos: number
+}
 
 /**
  * La vidriera y el carrito.
@@ -95,7 +118,10 @@ export function CatalogoCarrito({
   const [estado, accion, pendiente] = useActionState(hacerPedido, inicial)
   const [entrega, setEntrega] = useState<'retiro' | 'envio'>('retiro')
   const [abierto, setAbierto] = useState(false)
-  const [rubro, setRubro] = useState<string>('todo')
+  // La categoría elegida. `null` es "todo". Guardamos la hoja: el camino
+  // hasta ella se reconstruye solo, y así un click no tiene que acordarse de
+  // dónde venía.
+  const [rubro, setRubro] = useState<number | null>(null)
   const [busqueda, setBusqueda] = useState('')
 
   // Al volver de crear la cuenta, el carrito que se armó en la vidriera
@@ -212,7 +238,10 @@ export function CatalogoCarrito({
   const visibles = useMemo(
     () =>
       productos
-        .filter((p) => rubro === 'todo' || p.categoria_slug === rubro)
+        // Un producto aparece bajo toda su rama: uno que está en Dorada se
+        // encuentra también entrando por Básicos o por Decants. La rama la
+        // arma la base; acá sólo se pregunta si la elegida está adentro.
+        .filter((p) => rubro === null || normalizarRama(p.categoria_rama).includes(rubro))
         .filter(
           (p) =>
             !texto ||
@@ -226,39 +255,65 @@ export function CatalogoCarrito({
     [productos, rubro, texto],
   )
 
-  const solapas = [
-    { slug: 'todo', nombre: 'Todo', productos: productos.length },
-    ...categorias,
-  ]
+  // La cascada: una fila por cada eslabón del camino elegido, más una con las
+  // hijas del último. Elegir "Decants" hace aparecer Básicos y Color debajo;
+  // elegir Básicos hace aparecer las suyas, y así hasta donde llegue el árbol.
+  //
+  // Se calcula desde `rubro` en vez de guardarse: el camino hasta una
+  // categoría es un dato del árbol, no del estado. Con una sola variable no
+  // hay forma de que las filas queden contradiciéndose entre sí.
+  const camino = caminoHasta(categorias, rubro)
+  const filas = [null, ...camino.map((c) => c.id)]
+    .map((padre) => hijasDe(categorias, padre))
+    .filter((opciones) => opciones.length > 0)
 
   return (
     <div className="space-y-6">
       {/* --------------------------------------------------------- filtros -- */}
       <div className="space-y-3">
-        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-          <div className="flex w-max gap-2 sm:w-auto sm:flex-wrap">
-            {solapas.map((c) => {
-              const activa = rubro === c.slug
-              return (
+        {filas.map((opciones, i) => (
+          <div key={i} className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+            <div
+              className={[
+                'flex w-max gap-2 sm:w-auto sm:flex-wrap',
+                // Los niveles de abajo van más chicos: se lee de un vistazo
+                // cuál manda y cuál está afinando.
+                i > 0 ? 'text-sm' : '',
+              ].join(' ')}
+            >
+              {i === 0 && (
                 <button
-                  key={c.slug}
                   type="button"
-                  onClick={() => setRubro(c.slug)}
-                  aria-pressed={activa}
-                  className={[
-                    'rounded-full border px-4 py-1.5 text-sm whitespace-nowrap transition',
-                    activa
-                      ? 'border-oro bg-tinta text-crema-hueso'
-                      : 'border-arena bg-crema-hueso text-tinta-suave hover:border-oro hover:text-tinta',
-                  ].join(' ')}
+                  onClick={() => setRubro(null)}
+                  aria-pressed={rubro === null}
+                  className={solapa(rubro === null, 0)}
                 >
-                  {c.nombre}
-                  <span className="ml-1.5 text-xs opacity-60">{c.productos}</span>
+                  Todo
+                  <span className="ml-1.5 text-xs opacity-60">{productos.length}</span>
                 </button>
-              )
-            })}
+              )}
+              {opciones.map((c) => {
+                // Marcada tanto la elegida como sus ancestros: así el camino
+                // "Decants › Básicos" se ve entero y no sólo la punta.
+                const activa = camino.some((x) => x.id === c.id)
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    // Volver a tocar la que ya está elegida sube un nivel, que
+                    // es lo que uno intenta hacer instintivamente.
+                    onClick={() => setRubro(activa && rubro === c.id ? (c.padre_id ?? null) : c.id)}
+                    aria-pressed={activa}
+                    className={solapa(activa, i)}
+                  >
+                    {c.nombre}
+                    <span className="ml-1.5 text-xs opacity-60">{c.productos}</span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
-        </div>
+        ))}
 
         <label className="block">
           <span className="sr-only">Buscar en el catálogo</span>

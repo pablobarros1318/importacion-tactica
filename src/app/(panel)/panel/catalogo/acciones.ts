@@ -522,16 +522,105 @@ export async function guardarPrecios(
 
 /* ------------------------------------------------------------ categorías -- */
 
-export async function crearCategoria(formData: FormData): Promise<void> {
+/**
+ * Alta y edición de una categoría.
+ *
+ * Las categorías son un árbol: `padre_id` vacío es una raíz, y con padre es
+ * una subcategoría. Los controles que importan —que nadie arme un ciclo, que
+ * no se pase del tope de niveles, que dos hermanas no compartan slug— están en
+ * la base, porque acá se escribe por PostgREST y una validación en el servidor
+ * web se saltea con cualquier cliente. Lo de acá es sólo para dar un mensaje
+ * antes de ir y volver.
+ */
+export async function guardarCategoria(
+  _prev: EstadoABM,
+  formData: FormData,
+): Promise<EstadoABM> {
   await requireAdmin()
-  const nombre = String(formData.get('nombre_categoria') ?? '').trim()
-  if (!nombre) return
+
+  const id = Number(formData.get('id')) || null
+  const nombre = String(formData.get('nombre') ?? '').trim()
+  const padre_id = Number(formData.get('padre_id')) || null
+  const orden = Number(formData.get('orden')) || 0
+
+  if (!nombre) return { error: 'Ponele un nombre a la categoría.' }
+  if (id && padre_id === id) {
+    return { error: 'Una categoría no puede colgar de sí misma.' }
+  }
 
   const supabase = await createClient()
-  const { error } = await supabase.from('categorias').insert({ nombre, slug: aSlug(nombre) })
-  if (error) loguear('crearCategoria', error)
+  const { error } = id
+    ? await supabase.from('categorias').update({ nombre, padre_id, orden }).eq('id', id)
+    : await supabase
+        .from('categorias')
+        .insert({ nombre, slug: aSlug(nombre), padre_id, orden })
+
+  if (error) {
+    loguear('guardarCategoria', error)
+    // El slug es único entre hermanas: dos "Color" bajo el mismo padre chocan.
+    if (error.code === '23505') {
+      return { error: `Ya hay una categoría "${nombre}" en ese mismo lugar.` }
+    }
+    return { error: error.message }
+  }
 
   revalidatePath('/panel/catalogo')
+  revalidatePath('/panel/catalogo/categorias')
+  revalidatePath('/')
+  return { ok: id ? `"${nombre}" actualizada.` : `"${nombre}" creada.` }
+}
+
+export async function borrarCategoria(
+  _prev: EstadoABM,
+  formData: FormData,
+): Promise<EstadoABM> {
+  await requireAdmin()
+  const id = Number(formData.get('id'))
+  if (!id) return { error: 'Falta la categoría.' }
+
+  const supabase = await createClient()
+  // Por función y no por delete directo: la base explica por qué no se puede
+  // en vez de devolver un error de clave foránea en crudo.
+  const { error } = await supabase.rpc('fn_borrar_categoria', { p_id: id })
+
+  if (error) {
+    loguear('borrarCategoria', error)
+    return { error: error.message }
+  }
+
+  revalidatePath('/panel/catalogo')
+  revalidatePath('/panel/catalogo/categorias')
+  revalidatePath('/')
+  return { ok: 'Categoría borrada.' }
+}
+
+/** La capa de más que distingue a un SKU dentro de su producto. */
+export async function asignarCategoriaVariante(
+  _prev: EstadoABM,
+  formData: FormData,
+): Promise<EstadoABM> {
+  await requireAdmin()
+
+  const variante_id = Number(formData.get('variante_id'))
+  const producto_id = Number(formData.get('producto_id'))
+  const categoria_id = Number(formData.get('categoria_id')) || null
+
+  if (!variante_id) return { error: 'Falta la variante.' }
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('variantes')
+    .update({ categoria_id })
+    .eq('id', variante_id)
+
+  if (error) {
+    loguear('asignarCategoriaVariante', error)
+    return { error: error.message }
+  }
+
+  revalidatePath(`/panel/catalogo/${producto_id}`)
+  revalidatePath('/')
+  return { ok: categoria_id ? 'Subcategoría guardada.' : 'Se quitó la subcategoría.' }
 }
 
 /* ----------------------------------------------------------------- costo -- */

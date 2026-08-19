@@ -95,6 +95,12 @@ export default async function Catalogo({
         >
           Nuevo producto
         </Link>
+        <Link
+          href="/panel/catalogo/categorias"
+          className="rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
+        >
+          Categorías
+        </Link>
       </div>
 
       {faltas.size > 0 && (

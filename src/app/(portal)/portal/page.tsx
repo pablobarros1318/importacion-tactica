@@ -6,6 +6,7 @@ import {
   type Categoria,
 } from '@/components/portal/catalogo-carrito'
 import { ordenarPor } from '@/lib/orden'
+import { normalizarCategorias } from '@/lib/categorias'
 import { Filete } from '@/components/marca'
 
 export const metadata = { title: 'Catálogo · Importación Táctica' }
@@ -21,7 +22,9 @@ export default async function PortalCatalogo() {
   // la cantidad exacta de stock tampoco viaja al navegador del cliente.
   const [catRes, rubrosRes, misDatos, sedes] = await Promise.all([
     supabase.from('v_vidriera').select('*').order('producto'),
-    supabase.from('v_categorias_publicas').select('slug, nombre, productos').order('orden'),
+    supabase.from('v_categorias_publicas')
+      .select('id, padre_id, slug, nombre, nivel, orden, productos')
+      .order('orden'),
     supabase
       .from('v_mis_datos')
       .select('sede_preferida_id, direccion')
@@ -41,6 +44,10 @@ export default async function PortalCatalogo() {
     <div className="space-y-8">
       <header className="text-center">
         <h1 className="titulo text-3xl text-tinta sm:text-4xl">Catálogo</h1>
+        <p className="mx-auto mt-2 max-w-md text-sm text-tinta-suave">
+          Envases, decants e insumos. Los precios bajan por cantidad: cuanto más
+          llevás, menos te sale cada uno.
+        </p>
         <Filete className="mx-auto mt-5 max-w-xs" />
       </header>
 
@@ -51,7 +58,7 @@ export default async function PortalCatalogo() {
       ) : (
         <CatalogoCarrito
           productos={productos}
-          categorias={(rubrosRes.data ?? []) as Categoria[]}
+          categorias={normalizarCategorias((rubrosRes.data ?? []) as Categoria[])}
           sedes={sedes.map((s) => ({
             id: Number(s.id),
             nombre: s.nombre,

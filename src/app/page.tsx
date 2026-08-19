@@ -9,6 +9,7 @@ import {
   type Categoria,
 } from '@/components/portal/catalogo-carrito'
 import { ordenarPor } from '@/lib/orden'
+import { normalizarCategorias } from '@/lib/categorias'
 import { Monograma, Wordmark, Filete, Destello } from '@/components/marca'
 
 export const metadata: Metadata = {
@@ -44,7 +45,9 @@ export default async function Portada() {
   const supabase = await createClient()
   const [catRes, rubrosRes] = await Promise.all([
     supabase.from('v_vidriera').select('*').order('producto'),
-    supabase.from('v_categorias_publicas').select('slug, nombre, productos').order('orden'),
+    supabase.from('v_categorias_publicas')
+      .select('id, padre_id, slug, nombre, nivel, orden, productos')
+      .order('orden'),
   ])
 
   if (catRes.error) console.error('[portada]', catRes.error.message)
@@ -96,6 +99,10 @@ export default async function Portada() {
             <h1 className="titulo mt-3 text-3xl text-tinta sm:text-5xl">
               Tu marca empieza por un buen envase
             </h1>
+            <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-tinta-suave sm:text-base">
+              Frascos, decants e insumos para trabajar prolijo. Los precios bajan por
+              cantidad: cuanto más llevás, menos te sale cada uno.
+            </p>
             <Filete className="mx-auto mt-6 max-w-xs" />
           </header>
 
@@ -106,7 +113,7 @@ export default async function Portada() {
           ) : (
             <CatalogoCarrito
               productos={productos}
-              categorias={(rubrosRes.data ?? []) as Categoria[]}
+              categorias={normalizarCategorias((rubrosRes.data ?? []) as Categoria[])}
               publico
             />
           )}
@@ -117,7 +124,7 @@ export default async function Portada() {
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 py-10 text-center sm:px-6">
           <Destello size={10} className="text-oro" />
           <p className="text-sm text-tinta-suave">
-            Envíos a todo el país
+            Banfield · Monte Grande — envíos a todo el país
           </p>
           <p className="text-xs text-tinta-suave/70">
             ¿Ya tenés cuenta?{' '}

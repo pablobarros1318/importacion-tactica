@@ -9,6 +9,7 @@ import { FormVariante } from '@/components/catalogo/form-variante'
 import { RenombrarVariante } from '@/components/catalogo/renombrar-variante'
 import { CambiarClase } from '@/components/catalogo/cambiar-clase'
 import { CambiarUnidad } from '@/components/catalogo/cambiar-unidad'
+import { SubcategoriaVariante } from '@/components/catalogo/subcategoria-variante'
 import { EditorReceta, type OpcionInsumo } from '@/components/catalogo/editor-receta'
 import { EditorPrecios } from '@/components/catalogo/editor-precios'
 import { EditorPresentaciones } from '@/components/catalogo/editor-presentaciones'
@@ -28,6 +29,7 @@ type Variante = {
   costo_actual: number
   peso_gr: number | null
   unidad: 'unidad' | 'gramo' | 'mililitro'
+  categoria_id: number | null
 }
 
 export default async function DetalleProducto({
@@ -49,7 +51,7 @@ export default async function DetalleProducto({
     await Promise.all([
     supabase.from('productos').select('*').eq('id', productoId).maybeSingle(),
     supabase.from('variantes').select('*').eq('producto_id', productoId).order('sku'),
-    supabase.from('categorias').select('id, nombre').eq('activo', true).order('orden'),
+    supabase.from('categorias').select('id, nombre, slug, padre_id, orden').eq('activo', true).order('orden'),
     // Todo lo que puede entrar en una receta: la base sólo prohíbe anidar
     // armados. Antes esta consulta pedía es_insumo=true y dejaba afuera, por
     // ejemplo, un adaptador que se vende suelto y además va dentro de un kit.
@@ -311,6 +313,14 @@ export default async function DetalleProducto({
                         sku={v.sku}
                         pesoGr={v.peso_gr}
                         tieneStock={Number(stockDe.get(v.id) ?? 0) > 0}
+                      />
+                      <SubcategoriaVariante
+                        varianteId={v.id}
+                        productoId={productoId}
+                        categoriaProducto={producto.categoria_id}
+                        categoriaVariante={v.categoria_id}
+                        categorias={(cats.data ?? []) as Opcion[]}
+                        sku={v.sku}
                       />
                       <form action={archivarVariante}>
                         <input type="hidden" name="variante_id" value={v.id} />
