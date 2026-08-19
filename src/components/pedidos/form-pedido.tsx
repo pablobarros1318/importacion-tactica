@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react'
 import { crearPedido, guardarItems, type EstadoPed } from '@/app/(panel)/panel/pedidos/acciones'
 import { pesos, numero } from '@/lib/format'
+import { ComboBusqueda } from '@/components/combo-busqueda'
 
 const inicial: EstadoPed = {}
 const campo =
@@ -99,22 +100,17 @@ export function FormPedido({
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="text-sm">
             <span className="mb-1 block font-medium">Cliente</span>
-            <select
+            <ComboBusqueda
               name="cliente_id"
-              required
-              value={clienteId}
-              onChange={(e) => setClienteId(e.target.value)}
-              className={campo}
-            >
-              <option value="" disabled>
-                Elegí…
-              </option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </select>
+              etiqueta="Buscar el cliente por nombre"
+              requerido
+              valorInicial={String(clienteId ?? '')}
+              alElegir={setClienteId}
+              opciones={clientes.map((c) => ({
+                valor: String(c.id),
+                etiqueta: c.nombre,
+              }))}
+            />
           </label>
 
           <label className="text-sm">
@@ -177,25 +173,22 @@ export function FormPedido({
             <div key={i} className="flex flex-wrap items-end gap-2">
               <label className="min-w-0 flex-1 text-sm">
                 {i === 0 && <span className="mb-1 block text-xs text-stone-500">Producto</span>}
-                <select
+                <ComboBusqueda
                   name="item_sku"
-                  required
-                  value={f.sku}
-                  onChange={(e) => cambiar(i, 'sku', e.target.value)}
-                  className={campo}
-                >
-                  <option value="" disabled>
-                    Elegí…
-                  </option>
-                  {vendibles.map((v) => (
-                    <option key={v.sku} value={v.sku}>
-                      {v.producto} · {v.sku} ({numero(Number(v.listas))} listas
-                      {Number(v.se_pueden_armar) > 0 &&
-                        `, ${numero(Number(v.se_pueden_armar))} a armar`}
-                      )
-                    </option>
-                  ))}
-                </select>
+                  etiqueta="Buscar el producto por nombre o SKU"
+                  requerido
+                  valorInicial={f.sku}
+                  alElegir={(v) => cambiar(i, 'sku', v)}
+                  opciones={vendibles.map((v) => ({
+                    valor: v.sku,
+                    etiqueta: v.producto,
+                    detalle: `${v.sku} · ${numero(Number(v.listas))} listas${
+                      Number(v.se_pueden_armar) > 0
+                        ? `, ${numero(Number(v.se_pueden_armar))} a armar`
+                        : ''
+                    }`,
+                  }))}
+                />
               </label>
 
               <label className="w-28 text-sm">

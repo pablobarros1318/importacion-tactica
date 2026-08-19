@@ -4,6 +4,7 @@ import { CampoDecimal } from '@/components/campo-decimal'
 import { useActionState, useState } from 'react'
 import { guardarItems, type EstadoImp } from '@/app/(panel)/panel/importaciones/acciones'
 import { pesos, aNumero } from '@/lib/format'
+import { ComboBusqueda } from '@/components/combo-busqueda'
 
 const inicial: EstadoImp = {}
 const campo =
@@ -45,22 +46,18 @@ export function EditorItems({
         <div key={i} className="flex flex-wrap items-end gap-2">
           <label className="min-w-0 flex-1 text-sm">
             {i === 0 && <span className="mb-1 block text-xs text-stone-500">Producto</span>}
-            <select
+            <ComboBusqueda
               name="item_sku"
-              required
-              value={f.sku}
-              onChange={(e) => cambiar(i, 'sku', e.target.value)}
-              className={campo}
-            >
-              <option value="" disabled>
-                Elegí…
-              </option>
-              {opciones.map((o) => (
-                <option key={o.sku} value={o.sku}>
-                  {o.nombre} · {o.sku}
-                </option>
-              ))}
-            </select>
+              etiqueta="Buscar el producto por nombre o SKU"
+              requerido
+              valorInicial={f.sku}
+              alElegir={(v) => cambiar(i, 'sku', v)}
+              opciones={opciones.map((o) => ({
+                valor: o.sku,
+                etiqueta: o.nombre,
+                detalle: o.sku,
+              }))}
+            />
           </label>
 
           <label className="w-28 text-sm">

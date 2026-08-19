@@ -7,6 +7,7 @@ import {
   type EstadoArmado,
 } from '@/app/(panel)/panel/armado/acciones'
 import { numero } from '@/lib/format'
+import { ComboBusqueda } from '@/components/combo-busqueda'
 
 const inicial: EstadoArmado = {}
 const campo =
@@ -107,22 +108,19 @@ export function FormArmar({
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm">
               <span className="mb-1 block font-medium">¿Qué?</span>
-              <select
+              <ComboBusqueda
                 name="variante_id"
-                required
-                value={varianteId}
-                onChange={(e) => setVarianteId(Number(e.target.value) || '')}
-                className={campo}
-              >
-                <option value="" disabled>
-                  Elegí el producto…
-                </option>
-                {armables.map((a) => (
-                  <option key={a.variante_id} value={a.variante_id}>
-                    {a.producto} · {a.sku} (se pueden armar {numero(a.armable)})
-                  </option>
-                ))}
-              </select>
+                etiqueta="Buscar el producto a armar por nombre o SKU"
+                placeholder="Escribí para buscar…"
+                requerido
+                valorInicial={String(varianteId || '')}
+                alElegir={(v) => setVarianteId(Number(v) || '')}
+                opciones={armables.map((a) => ({
+                  valor: String(a.variante_id),
+                  etiqueta: a.producto,
+                  detalle: `${a.sku} · se pueden armar ${numero(a.armable)}`,
+                }))}
+              />
             </label>
 
             <label className="text-sm">

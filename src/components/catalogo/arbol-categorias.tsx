@@ -7,6 +7,7 @@ import {
   type EstadoABM,
 } from '@/app/(panel)/panel/catalogo/acciones'
 import { hijasDe, conSangria, type NodoCategoria } from '@/lib/categorias'
+import { ComboBusqueda } from '@/components/combo-busqueda'
 
 const inicial: EstadoABM = {}
 const campo =
@@ -238,18 +239,17 @@ function FormCategoria({
 
         <label className="min-w-40 flex-1 text-sm">
           <span className="mb-1 block text-xs text-stone-500">Cuelga de</span>
-          <select
+          <ComboBusqueda
             name="padre_id"
-            defaultValue={cat?.padre_id ?? padreId ?? ''}
-            className={campo}
-          >
-            <option value="">— es una categoría principal —</option>
-            {posibles.map(({ cat: c, etiqueta }) => (
-              <option key={c.id} value={c.id}>
-                {etiqueta}
-              </option>
-            ))}
-          </select>
+            etiqueta="Buscar de qué categoría cuelga"
+            placeholder="— es una categoría principal —"
+            valorInicial={String(cat?.padre_id ?? padreId ?? '')}
+            opciones={posibles.map(({ cat: c, etiqueta }) => ({
+              valor: String(c.id),
+              etiqueta,
+              buscar: c.slug,
+            }))}
+          />
         </label>
 
         <label className="w-20 text-sm">

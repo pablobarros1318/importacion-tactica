@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react'
 import { guardarReceta, type EstadoABM } from '@/app/(panel)/panel/catalogo/acciones'
 import { aNumero } from '@/lib/format'
+import { ComboBusqueda } from '@/components/combo-busqueda'
 
 const inicial: EstadoABM = {}
 const campo =
@@ -53,26 +54,22 @@ export function EditorReceta({
         <div key={i} className="flex items-end gap-2">
           <label className="min-w-0 flex-1 text-sm">
             {i === 0 && <span className="mb-1 block text-xs text-stone-500">Insumo</span>}
-            <select
+            <ComboBusqueda
               name="comp_sku"
-              value={f.sku}
-              onChange={(e) => cambiar(i, 'sku', e.target.value)}
-              required
-              className={campo}
-            >
-              <option value="" disabled>
-                Elegí un insumo…
-              </option>
-              {grupos.map((g) => (
-                <optgroup key={g.titulo} label={g.titulo}>
-                  {g.opciones.map((x) => (
-                    <option key={x.sku} value={x.sku}>
-                      {x.nombre} · {x.sku}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+              etiqueta="Buscar el insumo por nombre o SKU"
+              placeholder="Escribí para buscar el insumo…"
+              requerido
+              valorInicial={f.sku}
+              alElegir={(v) => cambiar(i, 'sku', v)}
+              opciones={grupos.flatMap((g) =>
+                g.opciones.map((x) => ({
+                  valor: x.sku,
+                  etiqueta: x.nombre,
+                  detalle: x.sku,
+                  grupo: g.titulo,
+                })),
+              )}
+            />
           </label>
 
           <label className="w-24 text-sm">

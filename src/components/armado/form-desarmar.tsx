@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react'
 import { desarmar, type EstadoArmado } from '@/app/(panel)/panel/armado/acciones'
 import { numero } from '@/lib/format'
+import { ComboBusqueda } from '@/components/combo-busqueda'
 
 const inicial: EstadoArmado = {}
 
@@ -62,21 +63,16 @@ export function FormDesarmar({
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <label className="min-w-0 flex-1 text-sm">
           <span className="mb-1 block text-xs text-stone-500">¿Qué?</span>
-          <select
+          <ComboBusqueda
             name="variante_id"
-            required
-            defaultValue=""
-            className="w-full rounded-md border border-stone-300 px-2.5 py-1.5 text-sm outline-none focus:border-stone-900"
-          >
-            <option value="" disabled>
-              Elegí…
-            </option>
-            {desarmables.map((d) => (
-              <option key={d.variante_id} value={d.variante_id}>
-                {d.producto} · {d.sku} ({numero(d.libres)} libres)
-              </option>
-            ))}
-          </select>
+            etiqueta="Buscar el producto a desarmar por nombre o SKU"
+            requerido
+            opciones={desarmables.map((d) => ({
+              valor: String(d.variante_id),
+              etiqueta: d.producto,
+              detalle: `${d.sku} · ${numero(d.libres)} libres`,
+            }))}
+          />
         </label>
         <label className="w-32 text-sm">
           <span className="mb-1 block text-xs text-stone-500">¿Cuántas?</span>

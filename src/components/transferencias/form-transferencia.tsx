@@ -8,6 +8,7 @@ import {
   type EstadoTrf,
 } from '@/app/(panel)/panel/transferencias/acciones'
 import { numero } from '@/lib/format'
+import { ComboBusqueda } from '@/components/combo-busqueda'
 
 const inicial: EstadoTrf = {}
 const campo =
@@ -98,22 +99,18 @@ export function FormTransferencia({
           <div key={i} className="flex flex-wrap items-end gap-2">
             <label className="min-w-0 flex-1 text-sm">
               {i === 0 && <span className="mb-1 block text-xs text-stone-500">Producto</span>}
-              <select
+              <ComboBusqueda
                 name="item_sku"
-                required
-                value={f.sku}
-                onChange={(e) => cambiar(i, 'sku', e.target.value)}
-                className={campo}
-              >
-                <option value="" disabled>
-                  Elegí…
-                </option>
-                {delOrigen.map((d) => (
-                  <option key={d.sku} value={d.sku}>
-                    {d.nombre} · {d.sku} (hay {numero(Number(d.disponible))})
-                  </option>
-                ))}
-              </select>
+                etiqueta="Buscar el producto por nombre o SKU"
+                requerido
+                valorInicial={f.sku}
+                alElegir={(v) => cambiar(i, 'sku', v)}
+                opciones={delOrigen.map((d) => ({
+                  valor: d.sku,
+                  etiqueta: d.nombre,
+                  detalle: `${d.sku} · hay ${numero(Number(d.disponible))}`,
+                }))}
+              />
             </label>
 
             <label className="w-32 text-sm">

@@ -11,6 +11,8 @@ export type OpcionCombo = {
   detalle?: string
   /** Palabras extra por las que también se puede encontrar. */
   buscar?: string
+  /** Encabezado bajo el que agruparla. Sin esto van todas juntas. */
+  grupo?: string
 }
 
 /**
@@ -102,6 +104,10 @@ export function ComboBusqueda({
   return (
     <div
       ref={caja}
+      /* Anclaje estable: el valor viaja en un input oculto, así que sin esto
+         no hay forma de apuntarle al buscador desde afuera —ni desde una
+         prueba ni desde nada— sin depender de cómo esté armado por dentro. */
+      data-combo={name}
       className="relative"
       onBlur={(e) => {
         // Sólo se cierra si el foco se fue de toda la caja: pasar del input a
@@ -176,6 +182,14 @@ export function ComboBusqueda({
           )}
           {filtradas.map((o, i) => (
             <li key={o.valor}>
+              {/* El encabezado del grupo se dibuja cuando cambia, y no en una
+                  pasada aparte: así al filtrar desaparecen solos los grupos
+                  que se quedaron sin opciones. */}
+              {o.grupo && o.grupo !== filtradas[i - 1]?.grupo && (
+                <p className="px-3 pt-2 pb-1 text-xs font-medium text-stone-400">
+                  {o.grupo}
+                </p>
+              )}
               <button
                 type="button"
                 role="option"

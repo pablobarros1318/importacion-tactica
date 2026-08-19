@@ -9,6 +9,7 @@ import {
 import { pesos } from '@/lib/format'
 import { CampoDecimal } from '@/components/campo-decimal'
 import type { OpcionVariante, OpcionPublicacion } from '@/components/form-venta-ml'
+import { ComboBusqueda } from '@/components/combo-busqueda'
 
 const inicial: EstadoPublicacion = {}
 const campo =
@@ -168,22 +169,18 @@ function FormPublicacion({
         <div key={i} className="flex items-end gap-2">
           <label className="min-w-0 flex-1 text-sm">
             <span className="mb-1 block text-xs text-stone-500">Producto</span>
-            <select
+            <ComboBusqueda
               name="pub_sku"
-              value={f.sku}
-              onChange={(e) => cambiar(i, 'sku', e.target.value)}
-              required
-              className={campo}
-            >
-              <option value="" disabled>
-                Elegí un producto…
-              </option>
-              {variantes.map((v) => (
-                <option key={v.sku} value={v.sku}>
-                  {v.nombre} · {v.sku}
-                </option>
-              ))}
-            </select>
+              etiqueta="Buscar el producto por nombre o SKU"
+              requerido
+              valorInicial={f.sku}
+              alElegir={(v) => cambiar(i, 'sku', v)}
+              opciones={variantes.map((v) => ({
+                valor: v.sku,
+                etiqueta: v.nombre,
+                detalle: v.sku,
+              }))}
+            />
           </label>
           <label className="w-20 text-sm">
             <span className="mb-1 block text-xs text-stone-500">Cant.</span>

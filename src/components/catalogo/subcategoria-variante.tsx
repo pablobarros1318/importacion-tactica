@@ -6,6 +6,7 @@ import {
   type EstadoABM,
 } from '@/app/(panel)/panel/catalogo/acciones'
 import { conSangria, rutaTexto, ramaDe, type NodoCategoria } from '@/lib/categorias'
+import { ComboBusqueda } from '@/components/combo-busqueda'
 
 const inicial: EstadoABM = {}
 
@@ -69,19 +70,17 @@ export function SubcategoriaVariante({
       <label className="sr-only" htmlFor={`subcat-${varianteId}`}>
         Subcategoría de {sku}
       </label>
-      <select
-        id={`subcat-${varianteId}`}
+      <ComboBusqueda
         name="categoria_id"
-        defaultValue={categoriaVariante ?? ''}
-        className="rounded-md border border-stone-300 px-2 py-1 text-xs outline-none focus:border-stone-900"
-      >
-        <option value="">— la del producto —</option>
-        {posibles.map(({ cat, etiqueta }) => (
-          <option key={cat.id} value={cat.id}>
-            {etiqueta}
-          </option>
-        ))}
-      </select>
+        etiqueta={`Buscar la subcategoría de ${sku}`}
+        placeholder="— la del producto —"
+        valorInicial={String(categoriaVariante ?? '')}
+        opciones={posibles.map(({ cat, etiqueta }) => ({
+          valor: String(cat.id),
+          etiqueta,
+          buscar: cat.slug,
+        }))}
+      />
       <button
         type="submit"
         disabled={pendiente}

@@ -7,6 +7,7 @@ import {
   type EstadoABM,
 } from '@/app/(panel)/panel/catalogo/acciones'
 import { conSangria, rutaTexto, type NodoCategoria } from '@/lib/categorias'
+import { ComboBusqueda } from '@/components/combo-busqueda'
 
 const inicial: EstadoABM = {}
 const campo =
@@ -114,18 +115,17 @@ export function FormProducto({
           {/* El árbol entero en un solo desplegable, con sangría por nivel. Se
               elige el punto más bajo que aplique a TODAS las variantes; lo que
               distingue a una de otra se pone en la variante. */}
-          <select
+          <ComboBusqueda
             name="categoria_id"
-            defaultValue={producto?.categoria_id ?? ''}
-            className={campo}
-          >
-            <option value="">— sin categoría —</option>
-            {conSangria(categorias).map(({ cat, etiqueta }) => (
-              <option key={cat.id} value={cat.id}>
-                {etiqueta}
-              </option>
-            ))}
-          </select>
+            etiqueta="Buscar la categoría"
+            placeholder="— sin categoría —"
+            valorInicial={String(producto?.categoria_id ?? '')}
+            opciones={conSangria(categorias).map(({ cat, etiqueta }) => ({
+              valor: String(cat.id),
+              etiqueta,
+              buscar: cat.slug,
+            }))}
+          />
           {producto?.categoria_id != null && (
             <span className="mt-1 block text-xs text-stone-500">
               {rutaTexto(categorias, producto.categoria_id)}

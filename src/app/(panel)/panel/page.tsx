@@ -9,8 +9,7 @@ import {
   type FilaSedes,
 } from '@/components/stock/tabla-sedes'
 import type {
-  VistaResumenArmado,
-  VistaStockConsolidado,
+  VistaDisponibilidad,
   VistaPendienteArmado,
   VistaSugerenciaTransferencia,
   Pedido,
@@ -142,9 +141,8 @@ export default async function InicioPanel() {
   const sede = await getSedeActiva()
   const supabase = await createClient()
 
-  const [armado, pendientes, sugerencias, pedidos, resumen, consolidado, sedesRes, minimosRes] =
+  const [pendientes, sugerencias, pedidos, resumen, consolidado, sedesRes, minimosRes] =
     await Promise.all([
-    supabase.from('v_resumen_armado').select('*').order('libres', { ascending: false }),
     supabase.from('v_pendiente_armado').select('*').order('created_at').limit(8),
     supabase.from('v_sugerencia_transferencia').select('*').limit(5),
     supabase
@@ -158,13 +156,20 @@ export default async function InicioPanel() {
       p_desde: sumarDias(hoyLocal(), -29),
       p_hasta: hoyLocal(),
     }),
-    // El stock de todo, con el reparto por sede adentro de `por_sede`.
-    supabase.from('v_stock_consolidado').select('*').order('producto'),
+    // Lo que se puede entregar de cada producto en cada sede. No trae insumos
+    // —los excluye la vista— y su `vendible` ya suma lo armado más lo que se
+    // puede armar con lo que hay.
+    supabase.from('v_disponibilidad').select('*'),
     supabase.from('sedes').select('id, codigo, nombre').eq('activo', true).order('id'),
     supabase.from('stock').select('variante_id, stock_minimo'),
   ])
 
   const filasPendientes = (pendientes.data ?? []) as VistaPendienteArmado[]
+  const filasSugerencias = (sugerencias.data ?? []) as VistaSugerenciaTransferencia[]
+  const filasPedidos = (pedidos.data ?? []) as Pick<
+    Pedido,
+    'id' | 'numero' | 'estado' | 'estado_pago' | 'total' | 'requiere_armado' | 'created_at'
+  >[]
   const sedesColumna = (sedesRes.data ?? []) as SedeColumna[]
 
   // El mínimo del SKU es la suma de los mínimos de cada sede: si en Banfield
@@ -176,46 +181,69 @@ export default async function InicioPanel() {
     minimos.set(id, (minimos.get(id) ?? 0) + Number(m.stock_minimo ?? 0))
   }
 
-  // Todo lo que hay físicamente, insumos incluidos: en este negocio los
-  // frascos y las tapas son la mayor parte del inventario, y un panel que dice
-  // "lo que hay" y los esconde miente. Lo que está en cero no entra: un
-  // tablero se mira de reojo, y una lista llena de ceros esconde lo que hay
-  // que ver. Primero lo que está por debajo del mínimo.
-  const filasStock: FilaSedes[] = ((consolidado.data ?? []) as VistaStockConsolidado[])
-    .filter((f) => Number(f.stock_total) > 0)
-    .map((f) => ({
-      sku: f.sku,
-      nombre: f.nombre_corto ?? f.producto,
-      total: Number(f.stock_total),
-      porSede: f.por_sede,
-      minimo: minimos.get(Number(f.variante_id)) ?? 0,
-    }))
-    .sort((a, b) => (b.minimo ?? 0) - b.total - ((a.minimo ?? 0) - a.total)
+  const disponibles = (consolidado.data ?? []) as VistaDisponibilidad[]
+
+  /**
+   * El stock del tablero se cuenta por PRODUCTO TERMINADO, no por lo que hay
+   * en la estantería.
+   *
+   * Los insumos no aparecen —la vista ya los deja afuera—, y un decant figura
+   * como disponible aunque no esté armado: si hay frascos, tapas y
+   * atomizadores, el producto está. Que haya que armarlo es otra pregunta, y
+   * la contesta el tablero de al lado.
+   *
+   * Se pivotea acá y no en la base porque son pocas filas —sedes por
+   * productos— y así las columnas salen de las sedes activas sin inventar una
+   * vista nueva.
+   */
+  const porVariante = new Map<
+    number,
+    { sku: string; nombre: string; total: number; porSede: Record<string, number> }
+  >()
+  for (const d of disponibles) {
+    const id = Number(d.variante_id)
+    const fila = porVariante.get(id) ?? {
+      sku: d.sku,
+      nombre: d.nombre_corto ?? d.producto,
+      total: 0,
+      porSede: {} as Record<string, number>,
+    }
+    fila.total += Number(d.vendible)
+    fila.porSede[d.sede] = (fila.porSede[d.sede] ?? 0) + Number(d.vendible)
+    porVariante.set(id, fila)
+  }
+
+  // Lo que está en cero no entra: un tablero se mira de reojo, y una lista
+  // llena de ceros esconde lo que hay que ver.
+  const filasStock: FilaSedes[] = [...porVariante.entries()]
+    .map(([id, f]) => ({ ...f, minimo: minimos.get(id) ?? 0 }))
+    .filter((f) => f.total > 0)
+    .sort((a, b) => (b.minimo - b.total) - (a.minimo - a.total)
       || a.nombre.localeCompare(b.nombre, 'es'))
 
-  // Lo armado sigue el mismo criterio, con una vuelta: acá "no hay" no es
-  // tener cero armadas, es no poder entregar ninguna. Un decant sin armar pero
-  // con insumos para 600 tiene que aparecer, porque es justamente lo que hay
-  // que ir a armar.
-  const filasArmado: FilaSedes[] = ((armado.data ?? []) as VistaResumenArmado[])
-    .filter((f) => Number(f.total_vendible) > 0)
-    .map((f) => ({
-      sku: f.sku,
-      nombre: f.nombre_corto ?? f.producto,
-      total: Number(f.libres),
-      porSede: f.libres_por_sede,
-      extra: Number(f.se_pueden_armar_mas),
+  /**
+   * Lo armado, sólo de la sede que se está mirando arriba.
+   *
+   * Acá el número que importa es el físico: cuántas hay hechas y listas para
+   * salir. Sumar las sedes daría un número que no le sirve a nadie —no se
+   * arma "en general", se arma en un lugar—, y por eso este tablero sigue al
+   * selector de sede y el de stock no.
+   */
+  const filasArmado: FilaSedes[] = disponibles
+    .filter((d) => d.es_compuesto && Number(d.sede_id) === Number(sede?.id ?? -1))
+    .filter((d) => Number(d.armado_disponible) > 0 || Number(d.armable) > 0)
+    .map((d) => ({
+      sku: d.sku,
+      nombre: d.nombre_corto ?? d.producto,
+      total: Number(d.armado_disponible),
+      porSede: null,
+      extra: Number(d.armable),
     }))
     .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre, 'es'))
-  const filasSugerencias = (sugerencias.data ?? []) as VistaSugerenciaTransferencia[]
-  const filasPedidos = (pedidos.data ?? []) as Pick<
-    Pedido,
-    'id' | 'numero' | 'estado' | 'estado_pago' | 'total' | 'requiere_armado' | 'created_at'
-  >[]
 
   // Si las consultas fallan porque todavía no se corrieron las migraciones,
   // mejor decirlo claro que mostrar todo en cero como si fuera normal.
-  const sinBase = armado.error && armado.error.code === '42P01'
+  const sinBase = consolidado.error && consolidado.error.code === '42P01'
 
   const totalLibres = filasArmado.reduce((a, f) => a + f.total, 0)
   const porArmar = filasPendientes.reduce((a, f) => a + Number(f.hay_que_armar ?? 0), 0)
@@ -324,28 +352,34 @@ export default async function InicioPanel() {
           una columna por sede en media pantalla no entra. */}
       <Panel
         titulo="Stock"
-        descripcion="Lo que hay y dónde está. En ámbar, lo que está en el mínimo o por debajo. Lo que está en cero no se muestra."
+        descripcion="Lo que podés entregar de cada producto y dónde. Cuenta lo armado más lo que se puede armar con los insumos que hay."
         accion={{ href: '/panel/stock', label: 'Ver stock' }}
       >
         <TablaSedes
           filas={filasStock}
           sedes={sedesColumna}
-          vacio="Todavía no hay nada con stock."
+          vacio="No hay nada para entregar todavía."
         />
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel
           titulo="¿Qué dejé armado?"
-          descripcion="Listo para salir, descontando lo comprometido. Lo que no se puede entregar ni armar no se muestra."
+          descripcion={
+            sede
+              ? `Hecho y listo para salir en ${sede.nombre}, descontando lo comprometido.`
+              : 'Hecho y listo para salir, descontando lo comprometido.'
+          }
           accion={{ href: '/panel/armado', label: 'Ir a armado' }}
         >
+          {/* Sin columnas por sede: este tablero es de la sede que se está
+              mirando arriba. No se arma "en general", se arma en un lugar. */}
           <TablaSedes
             filas={filasArmado}
-            sedes={sedesColumna}
-            titulo="Libres"
+            sedes={[]}
+            titulo="Armadas"
             extraTitulo="Se pueden armar"
-            vacio="No hay nada armado ni para armar."
+            vacio="Acá no hay nada armado ni para armar."
           />
         </Panel>
 

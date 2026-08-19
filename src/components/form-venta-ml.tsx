@@ -8,6 +8,7 @@ import {
 } from '@/app/(panel)/panel/mercadolibre/acciones'
 import { pesos, aNumero } from '@/lib/format'
 import { CampoDecimal } from '@/components/campo-decimal'
+import { ComboBusqueda } from '@/components/combo-busqueda'
 
 export type OpcionVariante = { sku: string; nombre: string }
 export type OpcionSede = { id: number; nombre: string }
@@ -212,42 +213,41 @@ export function FormVentaML({
               <span className="mb-1 block text-xs text-stone-500">
                 {publicaciones.length > 0 ? 'Publicación o producto' : 'Producto'}
               </span>
-              <select
+              <ComboBusqueda
                 name="sku"
-                value={fila.sku}
-                onChange={(e) => {
-                  const v = e.target.value
+                etiqueta={
+                  publicaciones.length > 0
+                    ? 'Buscar una publicación o un producto'
+                    : 'Buscar el producto por nombre o SKU'
+                }
+                placeholder={
+                  publicaciones.length > 0
+                    ? 'Escribí para buscar una publicación o un producto…'
+                    : 'Escribí para buscar…'
+                }
+                requerido
+                valorInicial={fila.sku}
+                alElegir={(v) => {
                   // Una publicación no es un SKU: ocupa el renglón y se abre
                   // en los suyos, así que nunca llega a viajar como valor.
                   if (v.startsWith('pub:')) usarPublicacion(i, v.slice(4))
                   else cambiar(i, 'sku', v)
                 }}
-                required
-                className={campo}
-              >
-                <option value="" disabled>
-                  {publicaciones.length > 0
-                    ? 'Elegí una publicación o un producto…'
-                    : 'Elegí un producto…'}
-                </option>
-                {publicaciones.length > 0 && (
-                  <optgroup label="Publicaciones ML">
-                    {publicaciones.map((c) => (
-                      <option key={c.id} value={`pub:${c.id}`}>
-                        {c.nombre}
-                        {c.monto != null ? ` · ${pesos(Number(c.monto))}` : ''}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                <optgroup label="Productos">
-                  {variantes.map((v) => (
-                    <option key={v.sku} value={v.sku}>
-                      {v.nombre} · {v.sku}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
+                opciones={[
+                  ...publicaciones.map((c) => ({
+                    valor: `pub:${c.id}`,
+                    etiqueta: c.nombre,
+                    detalle: c.monto != null ? pesos(Number(c.monto)) : undefined,
+                    grupo: 'Publicaciones ML',
+                  })),
+                  ...variantes.map((v) => ({
+                    valor: v.sku,
+                    etiqueta: v.nombre,
+                    detalle: v.sku,
+                    grupo: publicaciones.length > 0 ? 'Productos' : undefined,
+                  })),
+                ]}
+              />
             </label>
 
             <label className="w-20 text-sm">
