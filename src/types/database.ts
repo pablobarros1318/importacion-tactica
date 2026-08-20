@@ -18,7 +18,6 @@ export type EstadoPedido =
 export type EstadoPago = 'pendiente' | 'pagado' | 'reembolsado'
 export type MetodoEntrega = 'retiro' | 'envio'
 export type CanalPedido = 'web' | 'whatsapp' | 'instagram'
-export type TipoCliente = 'minorista' | 'mayorista'
 export type SituacionStock = 'entrega_inmediata' | 'requiere_armado' | 'sin_stock'
 
 export interface Perfil {
@@ -55,7 +54,6 @@ export interface Sede {
 export interface Cliente {
   id: number
   usuario_id: string | null
-  tipo: TipoCliente
   razon_social: string | null
   nombre_contacto: string
   cuit_dni: string | null

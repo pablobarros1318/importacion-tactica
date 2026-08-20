@@ -132,7 +132,7 @@ export function FormPedido({
               className={campo}
             >
               <option value="retiro">Retira en {sedeNombre}</option>
-              <option value="envio">Envío a domicilio</option>
+              <option value="envio">Envío por correo</option>
             </select>
           </label>
 

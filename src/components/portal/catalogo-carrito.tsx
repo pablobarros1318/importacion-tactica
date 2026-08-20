@@ -701,7 +701,7 @@ export function CatalogoCarrito({
                     className="w-full rounded-lg border border-arena bg-white px-3 py-2 text-sm outline-none focus:border-oro"
                   >
                     <option value="retiro">Lo paso a buscar</option>
-                    <option value="envio">Envío a domicilio</option>
+                    <option value="envio">Envío por correo</option>
                   </select>
                 </label>
 

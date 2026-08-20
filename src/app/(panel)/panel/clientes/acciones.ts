@@ -18,7 +18,7 @@ export async function guardarCliente(
 
   const id = Number(formData.get('id')) || null
   const campos = [
-    'nombre_contacto', 'razon_social', 'tipo', 'cuit_dni', 'email',
+    'nombre_contacto', 'razon_social', 'cuit_dni', 'email',
     'telefono', 'whatsapp', 'instagram', 'direccion', 'ciudad',
     'provincia', 'codigo_postal', 'sede_preferida_id', 'notas_internas',
   ]

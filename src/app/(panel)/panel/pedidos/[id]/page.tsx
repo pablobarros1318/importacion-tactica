@@ -139,7 +139,7 @@ export default async function DetallePedido({
         </div>
         <p className="mt-1 text-sm text-stone-500">
           {p.cliente} · {p.sede} · {p.canal} ·{' '}
-          {p.metodo_entrega === 'envio' ? `envío a ${p.direccion_envio}` : 'retira'} ·{' '}
+          {p.metodo_entrega === 'envio' ? `correo a ${p.direccion_envio}` : 'retira'} ·{' '}
           {fecha(p.created_at.slice(0, 10))}
         </p>
         {p.observaciones && (

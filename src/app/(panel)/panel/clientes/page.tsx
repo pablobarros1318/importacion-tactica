@@ -91,11 +91,6 @@ export default async function Clientes({
             <section key={c.id} className="rounded-lg border border-stone-200 bg-white px-4 py-3">
               <div className="flex flex-wrap items-center gap-3">
                 <span className="font-medium">{c.nombre_contacto}</span>
-                {c.tipo === 'mayorista' && (
-                  <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700">
-                    mayorista
-                  </span>
-                )}
                 <span className="text-xs text-stone-500">
                   {[c.whatsapp, c.email, c.ciudad].filter(Boolean).join(' · ') || 'sin datos de contacto'}
                 </span>

@@ -46,7 +46,8 @@ export function FormVentaML({
 
   const [filas, setFilas] = useState<ItemVenta[]>(previos)
   const [monto, setMonto] = useState(estado.valores?.monto ?? '')
-  const [usados, setUsados] = useState<string[]>([])
+  // Cada publicación usada, con cuántas veces entra en la venta.
+  const [usados, setUsados] = useState<{ id: number; veces: number }[]>([])
   const [clave, setClave] = useState(0)
 
   // useActionState devuelve un estado nuevo por envío: cuando trae valores,
@@ -69,6 +70,15 @@ export function FormVentaML({
   const quitar = (i: number) =>
     setFilas((f) => (f.length === 1 ? f : f.filter((_, x) => x !== i)))
 
+  // El monto sugerido acumula: cinco publicaciones liquidan cinco veces.
+  // Sigue siendo una sugerencia y se puede pisar a mano.
+  const sumarMonto = (unitario: number | null, veces: number) =>
+    setMonto((m) => {
+      if (unitario == null) return m
+      const total = aNumero(m || '0') + Number(unitario) * veces
+      return total > 0 ? String(Math.round(total * 100) / 100) : ''
+    })
+
   /**
    * Una publicación ocupa el renglón donde se la eligió y se abre en sus
    * productos. Por eso está adentro del selector y no arriba de todo: para
@@ -84,12 +94,17 @@ export function FormVentaML({
     const c = publicaciones.find((x) => String(x.id) === id)
     if (!c) return
 
+    // Si alguien ya escribió un número en la "Cant." del renglón donde eligió
+    // la publicación, ése es el número de publicaciones. Por defecto es 1, así
+    // que quien no lo mira no se entera.
+    const copias = Math.max(1, Math.round(aNumero(filas[indice]?.cantidad || '1') || 1))
+
     setFilas((f) => {
       const abierto = [
         ...f.slice(0, indice),
         ...c.items.map((i) => ({
           sku: i.sku,
-          cantidad: String(i.cantidad),
+          cantidad: String(i.cantidad * copias),
           precio: '',
         })),
         ...f.slice(indice + 1),
@@ -113,15 +128,55 @@ export function FormVentaML({
       return juntas
     })
 
-    // El monto se acumula: dos publicaciones liquidan la suma de las dos.
-    // Sigue siendo una sugerencia y se puede pisar.
-    setMonto((m) => {
-      if (c.monto == null) return m
-      const previo = aNumero(m || '0')
-      return String(Math.round((previo + Number(c.monto)) * 100) / 100)
+    sumarMonto(c.monto, copias)
+    setUsados((u) => {
+      const ya = u.find((x) => x.id === c.id)
+      return ya
+        ? u.map((x) => (x.id === c.id ? { ...x, veces: x.veces + copias } : x))
+        : [...u, { id: c.id, veces: copias }]
     })
-    setUsados((u) => [...u, c.nombre])
     setClave((k) => k + 1)
+  }
+
+  /**
+   * Sumar o restar copias de una publicación ya cargada. Trabaja por delta
+   * sobre los renglones y no los rehace desde cero, para no pisar los precios
+   * ni las cantidades que se hayan tocado a mano después de abrirla.
+   */
+  const ajustar = (c: OpcionPublicacion, delta: number) => {
+    if (!delta) return
+
+    setFilas((f) => {
+      const copia = f.map((x) => ({ ...x }))
+      for (const i of c.items) {
+        const mueve = i.cantidad * delta
+        const ya = copia.find((y) => y.sku === i.sku)
+        if (ya) {
+          ya.cantidad = String(Math.max(0, aNumero(ya.cantidad || '0') + mueve))
+        } else if (mueve > 0) {
+          copia.push({ sku: i.sku, cantidad: String(mueve), precio: '' })
+        }
+      }
+      // Los que quedaron en cero se van: eran de la publicación que se sacó.
+      // El renglón vacío del final se queda, es donde se elige lo próximo.
+      const vivos = copia.filter((x) => !x.sku || aNumero(x.cantidad || '0') > 0)
+      return vivos.length > 0 ? vivos : [{ sku: '', cantidad: '1', precio: '' }]
+    })
+
+    sumarMonto(c.monto, delta)
+    setUsados((u) =>
+      u
+        .map((x) => (x.id === c.id ? { ...x, veces: x.veces + delta } : x))
+        .filter((x) => x.veces > 0),
+    )
+    setClave((k) => k + 1)
+  }
+
+  const fijarVeces = (c: OpcionPublicacion, texto: string) => {
+    const n = Math.round(aNumero(texto || '0'))
+    if (!Number.isFinite(n) || n < 1) return
+    const actual = usados.find((x) => x.id === c.id)?.veces ?? 0
+    ajustar(c, n - actual)
   }
 
   const limpiar = () => {
@@ -313,17 +368,67 @@ export function FormVentaML({
         </div>
 
         {usados.length > 0 && (
-          <p className="text-xs text-stone-500">
-            En esta venta:{' '}
-            {[...new Set(usados)]
-              .map((n) => {
-                const veces = usados.filter((x) => x === n).length
-                return veces > 1 ? `${n} ×${veces}` : n
-              })
-              .join(' + ')}
-            . Los productos que estaban en más de una publicación quedaron en
-            un solo renglón, con las cantidades sumadas.
-          </p>
+          <div className="space-y-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2.5">
+            <p className="text-xs font-medium text-stone-600">
+              Publicaciones en esta venta
+            </p>
+            <ul className="space-y-1.5">
+              {usados.map((u) => {
+                const c = publicaciones.find((x) => x.id === u.id)
+                if (!c) return null
+                return (
+                  <li
+                    key={c.id}
+                    data-publicacion={c.nombre}
+                    className="flex flex-wrap items-center gap-2 text-sm"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{c.nombre}</span>
+                    {c.monto != null && (
+                      <span className="tabular-nums text-xs text-stone-500">
+                        {pesos(Number(c.monto) * u.veces)}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => ajustar(c, -1)}
+                        aria-label={`Una menos de ${c.nombre}`}
+                        className="h-7 w-7 rounded-md border border-stone-300 bg-white text-stone-600 hover:border-stone-900 hover:text-stone-900"
+                      >
+                        −
+                      </button>
+                      {/* Sin `name`: es cuántas veces entra la publicación, no
+                          un dato del formulario. Lo que se envía son los
+                          renglones que esto genera. */}
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={u.veces}
+                        onChange={(e) => fijarVeces(c, e.target.value)}
+                        aria-label={`Cuántas veces ${c.nombre}`}
+                        className="w-14 rounded-md border border-stone-300 px-1 py-1 text-center text-sm tabular-nums outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => ajustar(c, 1)}
+                        aria-label={`Una más de ${c.nombre}`}
+                        className="h-7 w-7 rounded-md border border-stone-300 bg-white text-stone-600 hover:border-stone-900 hover:text-stone-900"
+                      >
+                        +
+                      </button>
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+            <p className="text-xs text-stone-500">
+              Si vendiste varias veces la misma publicación, subí el número: se
+              multiplican las unidades de cada producto y lo que liquida.
+              {usados.length > 1 &&
+                ' Los productos que estaban en más de una publicación quedaron en un solo renglón, con las cantidades sumadas.'}
+            </p>
+          </div>
         )}
       </div>
 

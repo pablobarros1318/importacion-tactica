@@ -11,7 +11,6 @@ export type Cliente = {
   id: number
   nombre_contacto: string
   razon_social: string | null
-  tipo: string
   cuit_dni: string | null
   email: string | null
   telefono: string | null
@@ -76,14 +75,6 @@ export function FormCliente({
           <span className="mt-1 block text-xs text-stone-500">
             Con esto aparecen los botones para escribirle.
           </span>
-        </label>
-
-        <label className="text-sm">
-          <span className="mb-1 block font-medium">Tipo</span>
-          <select name="tipo" defaultValue={v('tipo') || 'minorista'} className={campo}>
-            <option value="minorista">Minorista</option>
-            <option value="mayorista">Mayorista</option>
-          </select>
         </label>
 
         <label className="text-sm">

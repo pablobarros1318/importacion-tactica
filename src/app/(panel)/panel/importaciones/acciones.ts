@@ -26,6 +26,17 @@ const num = (v: FormDataEntryValue | null) => {
 }
 const txt = (v: FormDataEntryValue | null) => String(v ?? '').trim()
 
+// Los números que la base recibe adentro del jsonb y castea a numeric no
+// pueden viajar como los escribió una persona: "1.250,75" hace explotar el
+// cast con "invalid input syntax for type numeric". Vacío sigue viajando
+// vacío, que es como la base entiende "no me lo dijeron".
+const numTexto = (v: FormDataEntryValue | null) => {
+  const s = txt(v)
+  if (s === '') return ''
+  const n = aNumero(s)
+  return Number.isFinite(n) ? String(n) : ''
+}
+
 /** Alta y edición de la cabecera del embarque. */
 export async function guardarImportacion(
   _prev: EstadoImp,
@@ -49,7 +60,7 @@ export async function guardarImportacion(
     moneda_origen: txt(formData.get('moneda_origen')) || 'USD',
     // Vacío viaja vacío y la base lo toma como 1. Mandar 0 dejaría todos
     // los costos en cero sin que nadie lo haya pedido.
-    tipo_cambio: txt(formData.get('tipo_cambio')),
+    tipo_cambio: numTexto(formData.get('tipo_cambio')),
     fecha_pedido: txt(formData.get('fecha_pedido')),
     fecha_embarque: txt(formData.get('fecha_embarque')),
     fecha_arribo: txt(formData.get('fecha_arribo')),
