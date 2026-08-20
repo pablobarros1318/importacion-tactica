@@ -63,7 +63,7 @@ export function FormCarga({
           <h2 className="font-medium">Agregar stock en {sedeNombre}</h2>
           <p className="mt-0.5 text-xs text-stone-500">
             Suma a lo que ya hay. Si querés fijar el número que contaste, usá
-            “Contar” en el renglón del producto.
+            “Recontado” en el renglón del producto.
           </p>
         </div>
         <button
