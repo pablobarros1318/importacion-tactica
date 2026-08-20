@@ -101,7 +101,7 @@ export function FilaStockDetalle({
             onClick={() => setAbierto(abierto === 'ajuste' ? '' : 'ajuste')}
             className="rounded-md px-2 py-1 text-xs text-stone-600 hover:bg-stone-100 hover:text-stone-900"
           >
-            Contar
+            Recontado
           </button>
           <button
             type="button"
