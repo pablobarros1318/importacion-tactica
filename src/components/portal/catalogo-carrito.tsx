@@ -69,7 +69,6 @@ export type Producto = {
   presentaciones: Presentacion[] | null
 }
 
-export type Sede = { id: number; nombre: string; direccion: string | null }
 export type Categoria = {
   id: number
   padre_id: number | null
@@ -95,15 +94,11 @@ export type Categoria = {
 export function CatalogoCarrito({
   productos,
   categorias,
-  sedes = [],
-  sedePreferida = null,
   direccionGuardada = null,
   publico = false,
 }: {
   productos: Producto[]
   categorias: Categoria[]
-  sedes?: Sede[]
-  sedePreferida?: number | null
   direccionGuardada?: string | null
   /** En la vidriera abierta no hay a quién facturarle: el pedido se confirma
    *  después de crear la cuenta, y el carrito viaja guardado en el navegador. */
@@ -705,22 +700,16 @@ export function CatalogoCarrito({
                   </select>
                 </label>
 
+                {/* No se pregunta de qué sede sale: eso lo decide quien prepara
+                    el pedido, mirando dónde hay stock. Preguntárselo al cliente
+                    era pedirle que decida algo que no puede saber, y después el
+                    admin lo cambiaba igual. Cuando esté listo se le avisa por
+                    WhatsApp dónde pasar a buscarlo. */}
                 {entrega === 'retiro' ? (
-                  <label className="text-sm">
-                    <span className="mb-1 block font-medium">¿Por dónde te queda?</span>
-                    <select
-                      name="sede_id"
-                      defaultValue={String(sedePreferida ?? sedes[0]?.id ?? '')}
-                      className="w-full rounded-lg border border-arena bg-white px-3 py-2 text-sm outline-none focus:border-oro"
-                    >
-                      {sedes.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.nombre}
-                          {s.direccion ? ` · ${s.direccion}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <p className="self-end text-sm text-tinta-suave">
+                    Cuando esté listo te escribimos por WhatsApp y te decimos
+                    dónde pasar a buscarlo.
+                  </p>
                 ) : (
                   <label className="text-sm">
                     <span className="mb-1 block font-medium">¿A dónde te lo mandamos?</span>

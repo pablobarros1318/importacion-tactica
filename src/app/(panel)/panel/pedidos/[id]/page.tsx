@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { requireAdmin } from '@/lib/auth'
+import { requireAdmin, getSedes } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { getSedeActiva } from '@/lib/sede'
 import { numero, pesos, fecha, fechaHora } from '@/lib/format'
 import { FormPedido, type Vendible, type Renglon } from '@/components/pedidos/form-pedido'
 import {
@@ -9,6 +10,10 @@ import {
   FormPago,
   FormCorregirCobro,
   BotonArmados,
+  FormSede,
+  FormCostoEnvio,
+  CerrarArmadoPedido,
+  type OrdenAbierta,
 } from '@/components/pedidos/acciones-pedido'
 import { eliminarPedido } from '../acciones'
 import { ordenarPor } from '@/lib/orden'
@@ -59,6 +64,14 @@ type Item = {
 
 type Accion = { clave: string; titulo: string; texto: string; link: string; orden: number }
 
+type Gestion = {
+  pedido_id: number
+  costo_envio: number | null
+  ordenes_abiertas: number
+  ordenes_totales: number
+  gasto_envio_id: number | null
+}
+
 const COLOR: Record<string, string> = {
   pendiente: 'bg-stone-100 text-stone-600',
   confirmado: 'bg-indigo-50 text-indigo-700',
@@ -83,21 +96,53 @@ export default async function DetallePedido({
   if (!pedidoId) notFound()
 
   const supabase = await createClient()
-  const [pedRes, itemsRes, waRes, descRes] = await Promise.all([
-    supabase.from('v_pedidos').select('*').eq('id', pedidoId).maybeSingle(),
-    supabase.from('v_pedido_items').select('*').eq('pedido_id', pedidoId),
-    supabase
-      .from('v_acciones_whatsapp')
-      .select('clave, titulo, texto, link, orden')
-      .eq('pedido_id', pedidoId),
-    supabase.rpc('fn_descuento_efectivo'),
-  ])
+  const [pedRes, itemsRes, waRes, descRes, gesRes, ordRes, sedes, sedeActiva] =
+    await Promise.all([
+      supabase.from('v_pedidos').select('*').eq('id', pedidoId).maybeSingle(),
+      supabase.from('v_pedido_items').select('*').eq('pedido_id', pedidoId),
+      supabase
+        .from('v_acciones_whatsapp')
+        .select('clave, titulo, texto, link, orden')
+        .eq('pedido_id', pedidoId),
+      supabase.rpc('fn_descuento_efectivo'),
+      supabase
+        .from('v_pedido_gestion')
+        .select('*')
+        .eq('pedido_id', pedidoId)
+        .maybeSingle(),
+      supabase
+        .from('v_ordenes_armado')
+        .select('id, numero, producto, sku, cantidad_planificada, estado')
+        .eq('pedido_id', pedidoId)
+        .in('estado', ['planificada', 'en_proceso'])
+        .order('id'),
+      getSedes(),
+      getSedeActiva(),
+    ])
 
   const p = pedRes.data as Pedido | null
   if (!p) notFound()
 
   const items = (itemsRes.data ?? []) as Item[]
   const acciones = ((waRes.data ?? []) as Accion[]).sort((a, b) => a.orden - b.orden)
+
+  const gestion = (gesRes.data ?? null) as Gestion | null
+  // La cuenta viene de la vista y no del largo de esta lista: la lista trae
+  // sólo las abiertas, y para saber si el botón de generarlas ya cumplió hay
+  // que saber si alguna vez se generó alguna.
+  const ordenesTotales = Number(gestion?.ordenes_totales ?? 0)
+  const ordenesAbiertas: OrdenAbierta[] = (
+    (ordRes.data ?? []) as (OrdenAbierta & { estado: string })[]
+  ).map((o) => ({
+    id: Number(o.id),
+    numero: o.numero,
+    producto: o.producto,
+    sku: o.sku,
+    cantidad_planificada: Number(o.cantidad_planificada),
+  }))
+  const costoEnvio = gestion?.costo_envio == null ? null : Number(gestion.costo_envio)
+  const esEnvio = p.metodo_entrega === 'envio'
+  const opcionesSede = sedes.map((s) => ({ id: Number(s.id), nombre: s.nombre }))
 
   const editable = p.estado === 'pendiente'
   const pagado = p.estado_pago === 'pagado'
@@ -158,15 +203,29 @@ export default async function DetallePedido({
         </p>
       )}
 
-      <section className="rounded-lg border border-stone-200 bg-white px-4 py-4">
+      <section className="space-y-4 rounded-lg border border-stone-200 bg-white px-4 py-4">
         <AccionesPedido
           pedidoId={pedidoId}
           estado={p.estado}
           pagado={pagado}
           aArmar={aArmar}
-          esEnvio={p.metodo_entrega === 'envio'}
+          esEnvio={esEnvio}
           seguimiento={p.seguimiento}
         />
+
+        {/* De qué sede sale. Va acá arriba porque se decide antes de
+            confirmar: después el stock ya quedó apartado en una sede. */}
+        {p.estado !== 'cancelado' && p.entregado_at == null && (
+          <div className="border-t border-stone-100 pt-3">
+            <FormSede
+              pedidoId={pedidoId}
+              sedeId={Number(p.sede_id)}
+              sedes={opcionesSede}
+              sedeActiva={sedeActiva ? Number(sedeActiva.id) : null}
+              editable={!p.stock_reservado}
+            />
+          </div>
+        )}
       </section>
 
       {!pagado && p.estado !== 'cancelado' && (
@@ -324,16 +383,67 @@ export default async function DetallePedido({
         </div>
       </section>
 
-      {aArmar > 0 && (
+      {(aArmar > 0 || ordenesAbiertas.length > 0) && (
         <section className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4">
           <h2 className="font-medium text-amber-900">
-            Faltan armar {numero(aArmar)} unidades
+            {ordenesAbiertas.length > 0
+              ? `Hay ${numero(ordenesAbiertas.length)} ${
+                  ordenesAbiertas.length === 1 ? 'orden de armado abierta' : 'órdenes de armado abiertas'
+                }`
+              : `Faltan armar ${numero(aArmar)} unidades`}
           </h2>
-          <p className="mt-0.5 mb-3 text-xs text-amber-800">
-            Los insumos ya están reservados para este pedido. Generá las órdenes
-            y aparecen en Armado.
-          </p>
-          <BotonArmados pedidoId={pedidoId} />
+
+          {/* El botón de generar sólo tiene sentido una vez. Después de que
+              las órdenes existen, volver a tocarlo no hace nada y confunde:
+              lo que hay que hacer es cerrarlas. */}
+          {ordenesTotales === 0 ? (
+            <>
+              <p className="mt-0.5 mb-3 text-xs text-amber-800">
+                Los insumos ya están reservados para este pedido. Generá las órdenes
+                y aparecen en Armado.
+              </p>
+              <BotonArmados pedidoId={pedidoId} />
+            </>
+          ) : ordenesAbiertas.length > 0 ? (
+            <>
+              <p className="mt-0.5 mb-3 text-xs text-amber-800">
+                Ya están generadas y esperando en Armado. Cuando termines de
+                armar, cerralas acá mismo: suman al stock y salen de esa lista.
+              </p>
+              <div className="space-y-2">
+                {ordenesAbiertas.map((o) => (
+                  <div
+                    key={o.id}
+                    data-orden={o.numero}
+                    className="flex flex-wrap items-center gap-3 rounded-md border border-amber-200 bg-white px-3 py-2"
+                  >
+                    <span className="text-sm font-medium">{o.producto}</span>
+                    <span className="text-xs text-stone-400">{o.sku}</span>
+                    <span className="text-sm text-stone-600">
+                      {numero(o.cantidad_planificada)} unidades · {o.numero}
+                    </span>
+                    <div className="ml-auto">
+                      <CerrarArmadoPedido orden={o} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="mt-0.5 text-xs text-amber-800">
+              Las órdenes de armado ya se cerraron. Si todavía figuran unidades
+              por armar, revisá el detalle en Armado.
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* Lo que costó despacharlo. Sólo en los pedidos por correo: en un
+          retiro no hay nada que pagar. */}
+      {esEnvio && p.estado !== 'cancelado' && (
+        <section className="rounded-lg border border-stone-200 bg-white px-4 py-4">
+          <h2 className="mb-2 font-medium">Costo del envío</h2>
+          <FormCostoEnvio pedidoId={pedidoId} costoEnvio={costoEnvio} />
         </section>
       )}
 

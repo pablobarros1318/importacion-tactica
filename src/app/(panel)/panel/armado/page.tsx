@@ -167,6 +167,15 @@ export default async function Armado() {
   const totalLibres = compuestos.reduce((a, c) => a + Number(c.armado_disponible), 0)
   const totalArmable = compuestos.reduce((a, c) => a + Number(c.armable), 0)
 
+  // La tabla es "qué dejé armado", así que muestra lo que está armado. Un
+  // producto en cero no es una respuesta a esa pregunta: es ruido entre medio
+  // de las que sí. Cuenta lo físico y no lo libre, para que lo que está
+  // comprometido con un pedido siga a la vista —está armado, aunque no se
+  // pueda vender de nuevo—. Lo que hay que ir a armar tiene su propio lugar:
+  // el panel de "conviene armar" y el desplegable del formulario.
+  const conArmadas = compuestos.filter((c) => Number(c.armado_fisico) > 0)
+  const escondidos = compuestos.length - conArmadas.length
+
   return (
     <div className="space-y-6">
       <div>
@@ -177,6 +186,36 @@ export default async function Armado() {
         </p>
       </div>
 
+      {/* Armar va primero: es a lo que se entra a esta pantalla. Antes estaba
+          abajo de la tabla entera y había que bajar toda la lista para llegar. */}
+      <FormArmar
+        sedeId={Number(sede.id)}
+        sedeNombre={sede.nombre}
+        armables={armables}
+        embarques={embarques}
+      />
+
+      {queArmar.length > 0 && (
+        <section className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-medium text-amber-900">Conviene armar</p>
+          <p className="mt-0.5 text-xs text-amber-800">
+            Están por debajo del mínimo que fijaste y hay insumos para cubrirlo.
+          </p>
+          <ul className="mt-2 space-y-1 text-sm text-amber-900">
+            {queArmar.map((q) => (
+              <li key={q.variante_id}>
+                <strong className="font-medium">{numero(Number(q.sugerido))}</strong> de{' '}
+                {q.producto}{' '}
+                <span className="text-xs text-amber-700">
+                  ({q.sku} · hay {numero(Number(q.libres))}, mínimo{' '}
+                  {numero(Number(q.minimo))})
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* ¿Qué dejé armado? — el panel de tranquilidad */}
       <section className="overflow-hidden rounded-lg border border-stone-200 bg-white">
         <div className="flex flex-wrap items-baseline gap-3 border-b border-stone-100 px-4 py-3">
@@ -184,12 +223,21 @@ export default async function Armado() {
           <p className="text-xs text-stone-500">
             {numero(totalLibres)} unidades listas · {numero(totalArmable)} más se
             podrían armar
+            {escondidos > 0 && (
+              <>
+                {' '}· {numero(escondidos)}{' '}
+                {escondidos === 1 ? 'producto está' : 'productos están'} en cero y no
+                {escondidos === 1 ? ' figura' : ' figuran'} acá
+              </>
+            )}
           </p>
         </div>
 
-        {compuestos.length === 0 ? (
+        {conArmadas.length === 0 ? (
           <p className="py-8 text-center text-sm text-stone-400">
-            Todavía no hay productos armados en el catálogo.
+            {compuestos.length === 0
+              ? 'Todavía no hay productos armados en el catálogo.'
+              : 'No hay nada armado en esta sede. Lo que se puede armar está en el formulario de arriba.'}
           </p>
         ) : (
           <table className="w-full table-fixed text-sm">
@@ -210,7 +258,7 @@ export default async function Armado() {
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
-              {compuestos.map((c) => (
+              {conArmadas.map((c) => (
                 <tr key={c.variante_id}>
                   <td className="px-4 py-2">
                     <Link
@@ -245,34 +293,6 @@ export default async function Armado() {
           </table>
         )}
       </section>
-
-      {queArmar.length > 0 && (
-        <section className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-sm font-medium text-amber-900">Conviene armar</p>
-          <p className="mt-0.5 text-xs text-amber-800">
-            Están por debajo del mínimo que fijaste y hay insumos para cubrirlo.
-          </p>
-          <ul className="mt-2 space-y-1 text-sm text-amber-900">
-            {queArmar.map((q) => (
-              <li key={q.variante_id}>
-                <strong className="font-medium">{numero(Number(q.sugerido))}</strong> de{' '}
-                {q.producto}{' '}
-                <span className="text-xs text-amber-700">
-                  ({q.sku} · hay {numero(Number(q.libres))}, mínimo{' '}
-                  {numero(Number(q.minimo))})
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <FormArmar
-        sedeId={Number(sede.id)}
-        sedeNombre={sede.nombre}
-        armables={armables}
-        embarques={embarques}
-      />
 
       {pendientes.length > 0 && (
         <section className="overflow-hidden rounded-lg border border-stone-200 bg-white">

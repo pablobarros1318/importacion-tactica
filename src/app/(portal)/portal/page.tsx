@@ -1,4 +1,4 @@
-import { requireCliente, getSedes } from '@/lib/auth'
+import { requireCliente } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import {
   CatalogoCarrito,
@@ -20,16 +20,15 @@ export default async function PortalCatalogo() {
 
   // La misma vista que la portada abierta: una sola fuente de verdad, y de paso
   // la cantidad exacta de stock tampoco viaja al navegador del cliente.
-  const [catRes, rubrosRes, misDatos, sedes] = await Promise.all([
+  const [catRes, rubrosRes, misDatos] = await Promise.all([
     supabase.from('v_vidriera').select('*').order('producto'),
     supabase.from('v_categorias_publicas')
       .select('id, padre_id, slug, nombre, nivel, orden, productos')
       .order('orden'),
     supabase
       .from('v_mis_datos')
-      .select('sede_preferida_id, direccion')
-      .maybeSingle<{ sede_preferida_id: number | null; direccion: string | null }>(),
-    getSedes(),
+      .select('direccion')
+      .maybeSingle<{ direccion: string | null }>(),
   ])
 
   if (catRes.error) console.error('[portal]', catRes.error.message)
@@ -59,12 +58,6 @@ export default async function PortalCatalogo() {
         <CatalogoCarrito
           productos={productos}
           categorias={normalizarCategorias((rubrosRes.data ?? []) as Categoria[])}
-          sedes={sedes.map((s) => ({
-            id: Number(s.id),
-            nombre: s.nombre,
-            direccion: s.direccion ?? null,
-          }))}
-          sedePreferida={misDatos.data?.sede_preferida_id ?? null}
           direccionGuardada={misDatos.data?.direccion ?? null}
         />
       )}

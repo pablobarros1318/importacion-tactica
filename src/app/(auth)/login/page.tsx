@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Suspense, useActionState } from 'react'
 import { entrar, type EstadoFormulario } from '../actions'
+import { CampoContrasena } from '@/components/campo-contrasena'
 
 const inicial: EstadoFormulario = {}
 
@@ -58,19 +59,7 @@ function Formulario() {
         />
       </div>
 
-      <div className="space-y-1.5">
-        <label htmlFor="password" className="text-sm font-medium">
-          Contraseña
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          className="w-full rounded-lg border border-arena bg-white px-3 py-2.5 text-sm text-tinta outline-none focus:border-oro focus:ring-1 focus:ring-oro"
-        />
-      </div>
+      <CampoContrasena id="password" label="Contraseña" />
 
       {estado.error && (
         <p

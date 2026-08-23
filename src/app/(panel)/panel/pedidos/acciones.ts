@@ -252,3 +252,114 @@ export async function eliminarPedido(formData: FormData): Promise<void> {
   revalidatePath('/panel/pedidos')
   redirect('/panel/pedidos')
 }
+
+/**
+ * De qué sede sale el pedido.
+ *
+ * El botón de atajo manda `sede_id` como valor propio del submit, así que hay
+ * dos campos con ese nombre en el mismo formulario: el del desplegable y el
+ * del botón. `formData.get` devuelve el primero, que es el select. Se toma el
+ * último, que es el que se tocó.
+ */
+export async function cambiarSede(
+  _prev: EstadoPed,
+  formData: FormData,
+): Promise<EstadoPed> {
+  await requireAdmin()
+  const pedido_id = Number(formData.get('pedido_id'))
+  const valores = formData.getAll('sede_id').map((v) => Number(v)).filter(Boolean)
+  const sede_id = valores[valores.length - 1]
+
+  if (!pedido_id || !sede_id) return { error: 'Falta la sede.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('fn_cambiar_sede_pedido', {
+    p_pedido_id: pedido_id,
+    p_sede_id: sede_id,
+  })
+
+  if (error) {
+    loguear('cambiarSede', error)
+    return { error: error.message }
+  }
+
+  revalidatePath(`/panel/pedidos/${pedido_id}`)
+  revalidatePath('/panel/pedidos')
+  return { ok: `El pedido sale de ${data}.` }
+}
+
+/** Lo que costó despachar el pedido. Va a Gastos, atado a este pedido. */
+export async function guardarCostoEnvio(
+  _prev: EstadoPed,
+  formData: FormData,
+): Promise<EstadoPed> {
+  await requireAdmin()
+  const pedido_id = Number(formData.get('pedido_id'))
+  const crudo = String(formData.get('costo_envio') ?? '').trim()
+  const monto = crudo === '' ? 0 : aNumero(crudo)
+
+  if (!Number.isFinite(monto) || monto < 0) {
+    return { error: 'El costo del envío no se entiende. Poné un número.' }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('fn_costo_envio_pedido', {
+    p_pedido_id: pedido_id,
+    p_monto: monto,
+  })
+
+  if (error) {
+    loguear('guardarCostoEnvio', error)
+    return { error: error.message }
+  }
+
+  revalidatePath(`/panel/pedidos/${pedido_id}`)
+  revalidatePath('/panel/reportes/gastos')
+  revalidatePath('/panel/reportes/resultado')
+  return {
+    ok:
+      Number(data) > 0
+        ? `Anotado en Gastos: $${Number(data).toLocaleString('es-AR')} de envío.`
+        : 'Se borró el gasto del envío.',
+  }
+}
+
+/**
+ * Cerrar desde el pedido una orden de armado que el pedido generó.
+ *
+ * Llama a la misma función que la pantalla de Armado —no hay dos formas de
+ * cerrar una orden— pero además refresca el pedido, que es desde donde se
+ * está mirando.
+ */
+export async function cerrarArmadoDelPedido(
+  _prev: EstadoPed,
+  formData: FormData,
+): Promise<EstadoPed> {
+  const perfil = await requireAdmin()
+  const orden_id = Number(formData.get('orden_id'))
+  const cantidad = aNumero(String(formData.get('cantidad') ?? ''))
+  const valores = { cantidad: String(formData.get('cantidad') ?? '') }
+
+  if (!orden_id) return { error: 'Falta la orden.', valores }
+  if (!Number.isFinite(cantidad) || cantidad <= 0) {
+    return { error: 'Poné cuántas unidades salieron.', valores }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('fn_cerrar_armado', {
+    p_orden_id: orden_id,
+    p_cantidad: cantidad,
+    p_mermas: [],
+    p_usuario_id: perfil.id,
+  })
+
+  if (error) {
+    loguear('cerrarArmadoDelPedido', error)
+    return { error: error.message, valores }
+  }
+
+  revalidatePath('/panel/armado')
+  revalidatePath('/panel/stock')
+  revalidatePath('/panel/pedidos')
+  return { ok: `Orden cerrada: ${cantidad} unidades armadas y sumadas al stock.` }
+}

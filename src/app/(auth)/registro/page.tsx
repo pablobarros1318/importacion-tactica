@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useActionState } from 'react'
 import { registrarse, type EstadoFormulario } from '../actions'
+import { CampoContrasena } from '@/components/campo-contrasena'
 
 const inicial: EstadoFormulario = {}
 
@@ -71,30 +72,22 @@ export default function RegistroPage() {
           id="whatsapp"
           name="whatsapp"
           type="tel"
-          placeholder="1155550000"
+          placeholder="+54 9 11 5555-0000"
           autoComplete="tel"
           defaultValue={estado.valores?.whatsapp ?? ''}
           className={campo}
         />
-
-        <p className="text-xs text-tinta-suave">Sin el 0, sin el 15.</p>
+        <p className="text-xs text-tinta-suave">Es por donde te avisamos cuando el pedido esté listo.</p>
       </div>
 
-      <div className="space-y-1.5">
-        <label htmlFor="password" className="text-sm font-medium">
-          Contraseña
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          required
-          minLength={8}
-          autoComplete="new-password"
-          className={campo}
-        />
-        <p className="text-xs text-tinta-suave">Mínimo 8 caracteres.</p>
-      </div>
+      <CampoContrasena
+        id="password"
+        label="Contraseña"
+        autoComplete="new-password"
+        minLength={8}
+        ayuda="Mínimo 8 caracteres."
+        className={campo}
+      />
 
       {estado.error && (
         <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">

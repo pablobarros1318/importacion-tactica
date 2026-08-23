@@ -27,6 +27,7 @@ export const SECCIONES: readonly Seccion[] = [
   { href: '/panel/pedidos', label: 'Pedidos', fase: 0 },
   { href: '/panel/mercadolibre', label: 'Mercado Libre', fase: 0 },
   { href: '/panel/clientes', label: 'Clientes', fase: 0 },
+  { href: '/panel/mensajes', label: 'Mensajes', fase: 0 },
   { href: '/panel/avisos', label: 'Avisos', fase: 0 },
   { href: '/panel/reportes', label: 'Reportes', fase: 0 },
 ]

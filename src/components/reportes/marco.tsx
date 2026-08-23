@@ -10,6 +10,8 @@ import Link from 'next/link'
 
 export const REPORTES = [
   { href: '/panel/reportes', label: 'Ventas' },
+  { href: '/panel/reportes/gastos', label: 'Gastos' },
+  { href: '/panel/reportes/resultado', label: 'Resultado' },
   { href: '/panel/reportes/margen', label: 'Margen' },
   { href: '/panel/reportes/merma', label: 'Merma' },
   { href: '/panel/reportes/rotacion', label: 'Rotación' },

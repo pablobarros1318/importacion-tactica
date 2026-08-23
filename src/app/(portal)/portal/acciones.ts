@@ -70,7 +70,10 @@ export async function hacerPedido(
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('fn_crear_mi_pedido', {
     p_items: items,
-    p_sede_id: Number(formData.get('sede_id')) || null,
+    // El cliente ya no elige sede: el pedido nace en la central y quien lo
+    // prepara decide de dónde sale el stock. `null` deja que la base aplique
+    // esa regla en vez de repetirla acá.
+    p_sede_id: null,
     p_metodo_entrega: entrega,
     p_direccion: direccion || null,
     p_observaciones: String(formData.get('observaciones') ?? '').trim() || null,
