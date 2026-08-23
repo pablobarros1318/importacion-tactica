@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react'
 import { crearPedido, guardarItems, type EstadoPed } from '@/app/(panel)/panel/pedidos/acciones'
 import { pesos, numero } from '@/lib/format'
+import { cantidadesPorGrupo, precioSegunGrupo } from '@/lib/grupos-precio'
 import { ComboBusqueda } from '@/components/combo-busqueda'
 
 const inicial: EstadoPed = {}
@@ -26,22 +27,25 @@ export type Vendible = {
   precio_unidad: number | null
   escalas: Escala[] | null
   minimo_compra: number
+  /** La subcategoría que agrupa las cantidades para el escalón de precio. */
+  grupo_precio: string | null
 }
 export type Renglon = { sku: string; cantidad: string }
 
 /**
- * El precio del tramo que corresponde a esa cantidad.
+ * El precio del tramo que corresponde a la cantidad de TODA la línea.
  *
- * Es la misma cuenta que hace `fn_precio_unitario` en la base. Antes esta
- * pantalla multiplicaba por el precio de una unidad, así que el detalle
- * mostraba un número y el total guardado mostraba otro.
+ * Es la misma cuenta que hace la base: el escalón lo decide lo que suman
+ * juntas las variantes de la misma subcategoría, y cada una cobra el precio de
+ * su propia lista en ese escalón. Si esta pantalla lo calculara por renglón,
+ * mostraría un total y la base guardaría otro.
  */
-function precioDe(v: Vendible | undefined, cantidad: number): number {
+function precioDe(v: Vendible | undefined, cantidadDelGrupo: number): number {
   if (!v) return 0
-  const aplica = (v.escalas ?? [])
-    .filter((e) => cantidad >= Number(e.desde))
-    .sort((a, b) => Number(b.desde) - Number(a.desde))[0]
-  return Number(aplica?.precio ?? v.precio_unidad ?? 0)
+  return precioSegunGrupo(
+    { sku: v.sku, escalas: v.escalas, precio_desde: v.precio_unidad, grupo_precio: v.grupo_precio },
+    cantidadDelGrupo,
+  )
 }
 
 /**
@@ -86,9 +90,29 @@ export function FormPedido({
     setFilas((f) => f.map((x, j) => (j === i ? { ...x, [k]: v } : x)))
 
   const datoDe = (sku: string) => vendibles.find((v) => v.sku === sku)
+
+  /** Lo que suma cada línea entre todos los renglones cargados. */
+  const porGrupo = cantidadesPorGrupo(
+    filas
+      .filter((f) => f.sku)
+      .map((f) => ({ sku: f.sku, cantidad: Number(f.cantidad) || 0 })),
+    vendibles.map((v) => ({
+      sku: v.sku,
+      escalas: v.escalas,
+      precio_desde: v.precio_unidad,
+      grupo_precio: v.grupo_precio,
+    })),
+  )
+
+  const delGrupo = (sku: string) => {
+    const v = datoDe(sku)
+    if (!v) return 0
+    return porGrupo.get(v.grupo_precio ?? `sku:${v.sku}`) ?? 0
+  }
+
   const total = filas.reduce((a, f) => {
     const n = Number(f.cantidad) || 0
-    return a + n * precioDe(datoDe(f.sku), n)
+    return a + n * precioDe(datoDe(f.sku), delGrupo(f.sku))
   }, 0)
 
   return (
@@ -210,10 +234,10 @@ export function FormPedido({
                 {d && n > 0 && (
                   <>
                     <span className="tabular-nums text-stone-600">
-                      {pesos(n * precioDe(d, n))}
+                      {pesos(n * precioDe(d, delGrupo(f.sku)))}
                     </span>
                     <span className="ml-1 text-stone-400">
-                      ({pesos(precioDe(d, n))} c/u)
+                      ({pesos(precioDe(d, delGrupo(f.sku)))} c/u)
                     </span>
                     {bajoMinimo && (
                       <span className="ml-2 text-amber-700">

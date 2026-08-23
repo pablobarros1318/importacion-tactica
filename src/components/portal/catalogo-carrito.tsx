@@ -7,6 +7,12 @@ import { guardarCarrito, tomarCarrito, type RenglonCarrito } from '@/lib/carrito
 import { pesos, numero, aNumero } from '@/lib/format'
 import { urlDeFoto } from '@/lib/imagenes'
 import {
+  cantidadesPorGrupo,
+  grupoDe,
+  precioSegunGrupo,
+  proximoEscalon,
+} from '@/lib/grupos-precio'
+import {
   cantidad as enUnidad,
   cantidadLarga,
   esGranel,
@@ -65,6 +71,8 @@ export type Producto = {
   // sería contarle el inventario a cualquiera que abra la vidriera.
   hay_stock: boolean
   escalas: Escala[] | null
+  /** La subcategoría que agrupa las cantidades para el escalón de precio. */
+  grupo_precio: string | null
   /** Si tiene, este producto se vende SÓLO así: en paquetes de precio fijo. */
   presentaciones: Presentacion[] | null
 }
@@ -159,14 +167,42 @@ export function CatalogoCarrito({
     return lista.find((x) => x.id === elegido) ?? lista[0]
   }
 
-  /** El precio de la escala que corresponde a esa cantidad. */
-  const precioDe = (p: Producto, cantidad: number) => {
-    const escalas = p.escalas ?? []
-    const aplica = escalas
-      .filter((e) => cantidad >= Number(e.desde))
-      .sort((a, b) => Number(b.desde) - Number(a.desde))[0]
-    return Number(aplica?.precio ?? p.precio_desde ?? 0)
-  }
+  /**
+   * Cuántas unidades hay de cada línea en el carrito.
+   *
+   * El escalón de precio no lo decide el renglón sino la línea entera: 3 de un
+   * color y 5 de otro son 8 del mismo decant de 5 ml. Los paquetes quedan
+   * afuera —tienen precio propio— igual que en la base.
+   */
+  const porGrupo = useMemo(
+    () =>
+      cantidadesPorGrupo(
+        Object.entries(carrito)
+          .filter(([sku]) => {
+            const p = productos.find((x) => x.sku === sku)
+            return p != null && (p.presentaciones ?? []).length === 0
+          })
+          .map(([sku, r]) => ({ sku, cantidad: r.paquetes })),
+        productos,
+      ),
+    [carrito, productos],
+  )
+
+  /** Cuántas unidades hay de la línea de este producto, contando la suya. */
+  const delGrupo = (p: Producto) => porGrupo.get(grupoDe(p)) ?? 0
+
+  /**
+   * ¿Hay más de un producto en esta línea?
+   *
+   * Sólo entonces tiene sentido decir "podés combinar": si la línea tiene un
+   * solo color, invitar a mezclar es mandar a buscar algo que no existe.
+   */
+  const hayHermanas = (p: Producto) =>
+    productos.filter((x) => grupoDe(x) === grupoDe(p) && (x.presentaciones ?? []).length === 0)
+      .length > 1
+
+  /** El precio de ESTE producto, según lo que sume toda su línea. */
+  const precioDe = (p: Producto) => precioSegunGrupo(p, delGrupo(p))
 
   const lineas = useMemo(
     () =>
@@ -189,7 +225,11 @@ export function CatalogoCarrito({
             }
           }
 
-          const precio = precioDe(p, r.paquetes)
+          // Se calcula acá adentro y no con `precioDe` para que la
+          // dependencia de `porGrupo` quede a la vista: si no, el memo se
+          // quedaría con precios viejos cuando cambia otro renglón de la
+          // misma línea, que es justo el caso nuevo.
+          const precio = precioSegunGrupo(p, porGrupo.get(grupoDe(p)) ?? 0)
           return {
             p,
             pres: null,
@@ -200,7 +240,7 @@ export function CatalogoCarrito({
           }
         })
         .filter((x): x is NonNullable<typeof x> => x !== null),
-    [carrito, productos],
+    [carrito, productos, porGrupo],
   )
 
   const total = lineas.reduce((a, l) => a + l.subtotal, 0)
@@ -348,7 +388,9 @@ export function CatalogoCarrito({
             // Con paquetes no hay mínimo que reclamar: el paquete más chico ya
             // ES el mínimo y no se puede pedir menos que uno. Sin este control,
             // la tarjeta comparaba 3 PAQUETES contra 10 GRAMOS y avisaba mal.
-            const faltaMinimo = !enPaquetes && enCarrito > 0 && enCarrito < minimo
+            // El mínimo se junta entre todas las variantes de la línea: con
+            // 3 azules y 5 negros faltan 42 para 50, no 47 de cada color.
+            const faltaMinimo = !enPaquetes && enCarrito > 0 && delGrupo(p) < minimo
             const foto = urlDeFoto(p.foto)
             const granel = esGranel(p.unidad) && !enPaquetes
             // Lo que le rinde al cliente. Si el paquete tiene un nombre escrito
@@ -421,7 +463,12 @@ export function CatalogoCarrito({
                     <p className="text-lg font-semibold tabular-nums text-tinta">
                       {enPaquetes
                         ? pesos(Number(pres?.precio ?? 0))
-                        : precioPorUnidad(precioDe(p, enCarrito || minimo), p.unidad)}
+                        : precioPorUnidad(
+                            delGrupo(p) > 0
+                              ? precioDe(p)
+                              : precioSegunGrupo(p, minimo),
+                            p.unidad,
+                          )}
                       {!enPaquetes && (
                         <span className="ml-1 text-xs font-normal text-tinta-suave">
                           {granel ? `el ${p.unidad === 'gramo' ? 'gramo' : 'ml'}` : 'c/u'}
@@ -471,9 +518,14 @@ export function CatalogoCarrito({
                   {!enPaquetes && escalas.length > 1 && (
                     <ul className="flex flex-wrap gap-1">
                       {escalas.map((e) => {
+                        // Se marca contra lo que suma la LÍNEA, no este
+                        // renglón: si no, con 30 dorados y 20 plateados la
+                        // tarjeta resaltaría el escalón de 10 mientras la base
+                        // cobra el de 50.
+                        const enLinea = delGrupo(p)
                         const activa =
-                          enCarrito >= Number(e.desde) &&
-                          (e.hasta === null || enCarrito <= Number(e.hasta))
+                          enLinea >= Number(e.desde) &&
+                          (e.hasta === null || enLinea <= Number(e.hasta))
                         return (
                           <li
                             key={String(e.desde)}
@@ -496,6 +548,23 @@ export function CatalogoCarrito({
                       })}
                     </ul>
                   )}
+
+                  {/* Lo que hace que esto sirva: el cliente no puede aprovechar
+                      un escalón que no sabe que existe. Se avisa sólo cuando
+                      está a mano, y contando toda la línea: las unidades que
+                      faltan las puede poner en cualquiera de los colores. */}
+                  {!enPaquetes && (() => {
+                    const cerca = proximoEscalon(p, delGrupo(p))
+                    if (!cerca) return null
+                    return (
+                      <p className="rounded border border-oro-claro bg-oro-palido/50 px-1.5 py-1 text-[10px] leading-snug text-oro-oscuro">
+                        Con {enUnidad(cerca.faltan, p.unidad)} más de{' '}
+                        {p.categoria} te queda a{' '}
+                        {precioPorUnidad(cerca.precio, p.unidad)}
+                        {hayHermanas(p) && ', y podés combinar variantes'}
+                      </p>
+                    )
+                  })()}
 
                   {/* ---------------------------------------- cantidad -- */}
                   <div className="mt-auto pt-1">
@@ -600,7 +669,7 @@ export function CatalogoCarrito({
                             ? `${enUnidad(enCarrito * Number(pres?.contenido ?? 0), p.unidad)} · ${pesos(
                                 enCarrito * Number(pres?.precio ?? 0),
                               )}`
-                            : `subtotal ${pesos(precioDe(p, enCarrito) * enCarrito)}`}
+                            : `subtotal ${pesos(precioDe(p) * enCarrito)}`}
                         </p>
                       )
                     )}
