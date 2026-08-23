@@ -67,6 +67,10 @@ export function SubcategoriaVariante({
     <form action={accion} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="variante_id" value={varianteId} />
       <input type="hidden" name="producto_id" value={productoId} />
+      {/* Sólo si ya tenía una, un envío vacío quiere decir "sacala". Si no la
+          tenía, un envío vacío es que no se eligió nada, y eso se avisa en vez
+          de responder "se quitó la subcategoría" a algo que nunca existió. */}
+      {categoriaVariante != null && <input type="hidden" name="tenia" value="1" />}
       <label className="sr-only" htmlFor={`subcat-${varianteId}`}>
         Subcategoría de {sku}
       </label>

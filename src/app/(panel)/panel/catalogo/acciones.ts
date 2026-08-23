@@ -542,6 +542,10 @@ export async function guardarCategoria(
   const nombre = String(formData.get('nombre') ?? '').trim()
   const padre_id = Number(formData.get('padre_id')) || null
   const orden = Number(formData.get('orden')) || 0
+  // El formulario manda un campo oculto en "0" y el casillero en "1". Un
+  // casillero sin tildar no manda nada, así que sin el oculto no habría forma
+  // de distinguir "lo destildó" de "este formulario no trae el campo".
+  const agrupa_cantidades = formData.getAll('agrupa_cantidades').includes('1')
 
   if (!nombre) return { error: 'Ponele un nombre a la categoría.' }
   if (id && padre_id === id) {
@@ -550,10 +554,13 @@ export async function guardarCategoria(
 
   const supabase = await createClient()
   const { error } = id
-    ? await supabase.from('categorias').update({ nombre, padre_id, orden }).eq('id', id)
+    ? await supabase
+        .from('categorias')
+        .update({ nombre, padre_id, orden, agrupa_cantidades })
+        .eq('id', id)
     : await supabase
         .from('categorias')
-        .insert({ nombre, slug: aSlug(nombre), padre_id, orden })
+        .insert({ nombre, slug: aSlug(nombre), padre_id, orden, agrupa_cantidades })
 
   if (error) {
     loguear('guardarCategoria', error)
@@ -604,8 +611,19 @@ export async function asignarCategoriaVariante(
   const variante_id = Number(formData.get('variante_id'))
   const producto_id = Number(formData.get('producto_id'))
   const categoria_id = Number(formData.get('categoria_id')) || null
+  // Sacar la subcategoría es una decisión, no lo que pasa cuando no llegó
+  // nada. El formulario manda este campo sólo cuando la variante ya tenía una:
+  // sin él, un campo vacío es "no elegiste", no "borrala".
+  const tenia = String(formData.get('tenia') ?? '') === '1'
 
   if (!variante_id) return { error: 'Falta la variante.' }
+
+  if (categoria_id === null && !tenia) {
+    return {
+      error:
+        'No quedó elegida ninguna subcategoría. Escribí y después tocá la opción en la lista.',
+    }
+  }
 
   const supabase = await createClient()
   const { error } = await supabase

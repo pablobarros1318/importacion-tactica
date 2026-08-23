@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useId, useMemo, useRef, useState } from 'react'
 
 export type OpcionCombo = {
   /** Lo que viaja en el formulario. */
@@ -55,27 +55,63 @@ export function ComboBusqueda({
   const [texto, setTexto] = useState('')
   const [abierto, setAbierto] = useState(false)
   const [marcado, setMarcado] = useState(0)
+  // Se escribió algo que no terminó eligiendo nada. Se guarda para poder
+  // dejarlo a la vista: si el casillero se vacía solo, el que lo escribió cree
+  // que eligió.
+  const [sinResolver, setSinResolver] = useState('')
 
   const elegida = opciones.find((o) => o.valor === valor) ?? null
 
-  const filtradas = useMemo(() => {
-    const q = normalizar(texto)
-    if (!q) return opciones
-    // Todas las palabras tienen que estar en algún lado: "jer 10" encuentra
-    // "Jeringa de carga · JER-10ML" aunque las dos partes vengan de campos
-    // distintos.
-    const partes = q.split(/\s+/).filter(Boolean)
-    return opciones.filter((o) => {
-      const heno = normalizar(`${o.etiqueta} ${o.detalle ?? ''} ${o.buscar ?? ''}`)
-      return partes.every((p) => heno.includes(p))
-    })
-  }, [opciones, texto])
+  // Todas las palabras tienen que estar en algún lado: "jer 10" encuentra
+  // "Jeringa de carga · JER-10ML" aunque las dos partes vengan de campos
+  // distintos.
+  const coincidencias = useCallback(
+    (busqueda: string) => {
+      const q = normalizar(busqueda)
+      if (!q) return opciones
+      const partes = q.split(/\s+/).filter(Boolean)
+      return opciones.filter((o) => {
+        const heno = normalizar(`${o.etiqueta} ${o.detalle ?? ''} ${o.buscar ?? ''}`)
+        return partes.every((p) => heno.includes(p))
+      })
+    },
+    [opciones],
+  )
+
+  const filtradas = useMemo(() => coincidencias(texto), [coincidencias, texto])
 
   const elegir = (o: OpcionCombo) => {
     setValor(o.valor)
     setTexto('')
+    setSinResolver('')
     setAbierto(false)
     alElegir?.(o.valor)
+  }
+
+  /**
+   * Lo que quedó escrito sin haber tocado la lista.
+   *
+   * Escribir "Basicos", ver que la lista lo encontró y tocar Guardar es lo que
+   * cualquiera hace, y hasta ahora el formulario viajaba vacío: el valor sólo
+   * se fijaba al hacer clic en el renglón. Peor todavía, el casillero se
+   * vaciaba en ese mismo instante, así que ni siquiera se veía el error.
+   *
+   * Al salir del campo se resuelve lo tipeado. Si hay una sola opción posible
+   * —o una que coincide exactamente— se elige ésa, que es lo que se quiso
+   * decir. Si hay varias o ninguna, no se adivina: se deja el texto a la vista
+   * y se avisa que falta elegir de la lista.
+   */
+  const resolver = () => {
+    if (!texto.trim()) {
+      setSinResolver('')
+      return
+    }
+    const q = normalizar(texto)
+    const exactas = opciones.filter((o) => normalizar(o.etiqueta) === q)
+    if (exactas.length === 1) return elegir(exactas[0])
+    if (filtradas.length === 1) return elegir(filtradas[0])
+    setSinResolver(texto)
+    setTexto('')
   }
 
   const teclas = (e: React.KeyboardEvent) => {
@@ -112,7 +148,10 @@ export function ComboBusqueda({
       onBlur={(e) => {
         // Sólo se cierra si el foco se fue de toda la caja: pasar del input a
         // un renglón de la lista no tiene que cerrarla.
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) setAbierto(false)
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setAbierto(false)
+          resolver()
+        }
       }}
     >
       <input type="hidden" name={name} value={valor} />
@@ -126,14 +165,16 @@ export function ComboBusqueda({
           aria-controls={`${id}-lista`}
           aria-label={etiqueta}
           autoComplete="off"
-          value={abierto ? texto : (elegida?.etiqueta ?? '')}
+          value={abierto ? texto : (elegida?.etiqueta ?? sinResolver)}
           placeholder={elegida ? elegida.etiqueta : placeholder}
+          aria-invalid={sinResolver !== '' || undefined}
           onFocus={() => {
             setAbierto(true)
             setMarcado(0)
           }}
           onChange={(e) => {
             setTexto(e.target.value)
+            setSinResolver('')
             setAbierto(true)
             setMarcado(0)
           }}
@@ -146,6 +187,7 @@ export function ComboBusqueda({
             onClick={() => {
               setValor('')
               setTexto('')
+              setSinResolver('')
               alElegir?.('')
             }}
             aria-label={`Quitar ${elegida.etiqueta}`}
@@ -155,6 +197,18 @@ export function ComboBusqueda({
           </button>
         )}
       </div>
+
+      {/* Se escribió algo que no alcanzó para elegir: o coincide con varias
+          opciones o con ninguna. No se adivina, se dice. El aviso se arma con
+          el texto que falló y no con el filtro de ahora, que ya se limpió. */}
+      {sinResolver !== '' && (
+        <p className="mt-1 text-xs text-amber-700">
+          {coincidencias(sinResolver).length === 0
+            ? `No hay ninguna opción que coincida con “${sinResolver}”.`
+            : `“${sinResolver}” coincide con varias: tocá la que va.`}
+          {elegida && ` Sigue elegida: ${elegida.etiqueta}.`}
+        </p>
+      )}
 
       {/* Para que `required` lo controle el navegador y no haya que replicar
           la validación: un campo invisible pero enfocable que espeja el valor. */}

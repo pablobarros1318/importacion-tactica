@@ -4,88 +4,42 @@ import { useActionState, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { hacerPedido, type EstadoPortal } from '@/app/(portal)/portal/acciones'
 import { guardarCarrito, tomarCarrito, type RenglonCarrito } from '@/lib/carrito'
-import { pesos, numero, aNumero } from '@/lib/format'
+import { pesos, numero } from '@/lib/format'
 import { urlDeFoto } from '@/lib/imagenes'
 import {
   cantidadesPorGrupo,
+  faltaParaElMinimo,
   grupoDe,
   precioSegunGrupo,
   proximoEscalon,
 } from '@/lib/grupos-precio'
 import {
+  bloques,
+  fichas,
+  type Cesta,
+  type Ficha,
+  type Presentacion,
+} from '@/lib/vidriera'
+import {
   cantidad as enUnidad,
   cantidadLarga,
   esGranel,
   normalizar,
-  paso,
   precioPorUnidad,
-  simbolo,
-  textoEquivalencia,
   type Unidad,
 } from '@/lib/unidades'
 import { Destello, Monograma } from '@/components/marca'
-import { caminoHasta, hijasDe, normalizarRama } from '@/lib/categorias'
+import { FiltrosCatalogo } from '@/components/portal/filtros-catalogo'
+import { FichaProducto } from '@/components/portal/ficha-producto'
+import { ContadorCantidad } from '@/components/portal/contador-cantidad'
+
+// Los tipos viven en un módulo neutro —los usa la página, que corre en el
+// servidor— y se reexportan acá para no tener que tocar las dos pantallas que
+// ya los importaban de este archivo.
+export type { Producto, Categoria, Escala, Presentacion } from '@/lib/vidriera'
+import type { Producto, Categoria } from '@/lib/vidriera'
 
 const inicial: EstadoPortal = {}
-
-/** El botón de un filtro. El nivel sólo cambia el tamaño, no la lógica. */
-function solapa(activa: boolean, nivel: number): string {
-  return [
-    'rounded-full border whitespace-nowrap transition',
-    nivel === 0 ? 'px-4 py-1.5 text-sm' : 'px-3 py-1 text-xs',
-    activa
-      ? 'border-oro bg-tinta text-crema-hueso'
-      : 'border-arena bg-crema-hueso text-tinta-suave hover:border-oro hover:text-tinta',
-  ].join(' ')
-}
-
-export type Escala = { desde: number; hasta: number | null; precio: number }
-
-/** Un paquete a la venta: cuánto trae y cuánto sale, entero. */
-export type Presentacion = {
-  id: number
-  contenido: number
-  precio: number
-  nombre: string | null
-}
-
-export type Producto = {
-  variante_id: number
-  sku: string
-  producto: string
-  descripcion_corta: string | null
-  nombre_corto: string | null
-  categoria: string
-  categoria_slug: string
-  categoria_orden: number
-  /** Todas las categorías bajo las que tiene que aparecer, de la raíz para
-   *  abajo: la rama del producto más la de la variante. */
-  categoria_rama: number[] | null
-  unidad: Unidad
-  /** Lo que pesa una pieza. Sólo para decirle al cliente cuánto le rinde. */
-  peso_gr: number | null
-  foto: string | null
-  precio_desde: number | null
-  minimo_compra: number
-  // Booleano a propósito: la cantidad exacta no sale de la base. Publicarla
-  // sería contarle el inventario a cualquiera que abra la vidriera.
-  hay_stock: boolean
-  escalas: Escala[] | null
-  /** La subcategoría que agrupa las cantidades para el escalón de precio. */
-  grupo_precio: string | null
-  /** Si tiene, este producto se vende SÓLO así: en paquetes de precio fijo. */
-  presentaciones: Presentacion[] | null
-}
-
-export type Categoria = {
-  id: number
-  padre_id: number | null
-  slug: string
-  nombre: string
-  nivel: number
-  orden: number
-  productos: number
-}
 
 /**
  * La vidriera y el carrito.
@@ -95,9 +49,16 @@ export type Categoria = {
  * Los precios que se muestran acá son informativos: el que vale es el que
  * calcula la base al crear el pedido.
  *
- * Los filtros también son del navegador. Con menos de cincuenta productos, el
- * catálogo entero ya vino en la primera carga: filtrar contra el servidor
- * agregaría una espera a cada tecla sin ganar nada.
+ * La grilla muestra un PRODUCTO por tarjeta y los colores quedan adentro. Antes
+ * era un SKU por tarjeta, y con veintidós colores de la misma línea la pantalla
+ * se volvía una pared: había que buscar cinco tarjetas sueltas para armar un
+ * pedido de cinco colores, sin ver nunca cuánto sumaban entre todas. Los
+ * productos de una sola variante siguen resolviéndose desde la tarjeta, sin
+ * hacer entrar a ningún lado por nada.
+ *
+ * Los filtros son del navegador. Con menos de cincuenta productos, el catálogo
+ * entero ya vino en la primera carga: filtrar contra el servidor agregaría una
+ * espera a cada tecla sin ganar nada.
  */
 export function CatalogoCarrito({
   productos,
@@ -121,11 +82,14 @@ export function CatalogoCarrito({
   const [estado, accion, pendiente] = useActionState(hacerPedido, inicial)
   const [entrega, setEntrega] = useState<'retiro' | 'envio'>('retiro')
   const [abierto, setAbierto] = useState(false)
-  // La categoría elegida. `null` es "todo". Guardamos la hoja: el camino
-  // hasta ella se reconstruye solo, y así un click no tiene que acordarse de
-  // dónde venía.
+  // La categoría elegida. `null` es "todo". Guardamos la hoja: el camino hasta
+  // ella se reconstruye solo.
   const [rubro, setRubro] = useState<number | null>(null)
   const [busqueda, setBusqueda] = useState('')
+  const [soloStock, setSoloStock] = useState(false)
+  const [filtros, setFiltros] = useState(false)
+  /** El producto que se está mirando por dentro, o null si estamos en la grilla. */
+  const [mirando, setMirando] = useState<number | null>(null)
 
   // Al volver de crear la cuenta, el carrito que se armó en la vidriera
   // abierta está esperando en el navegador. Se carga una sola vez y se borra.
@@ -139,9 +103,6 @@ export function CatalogoCarrito({
     if (Object.keys(validos).length) setCarrito((c) => ({ ...validos, ...c }))
   }, [publico, productos])
 
-  // Antes esto redondeaba a entero siempre. Con un producto que se vende por
-  // peso, eso convertía 250,5 g en 250 y el cliente pagaba de menos sin que
-  // nadie se enterara. Ahora el redondeo lo decide la unidad de cada producto.
   /**
    * Un renglón del carrito son SIEMPRE paquetes: para lo que se cuenta de a
    * uno, el "paquete" es la unidad y la presentación va en nulo. Así hay una
@@ -159,6 +120,16 @@ export function CatalogoCarrito({
       return { ...c, [sku]: { paquetes: n, presentacionId: pres } }
     })
 
+  const escribir = (sku: string, texto: string | null) =>
+    setCrudos((c) => {
+      if (texto === null) {
+        const r = { ...c }
+        delete r[sku]
+        return r
+      }
+      return { ...c, [sku]: texto }
+    })
+
   /** El paquete elegido de un producto, o el más chico si todavía no eligió. */
   const presentacionDe = (p: Producto): Presentacion | null => {
     const lista = p.presentaciones ?? []
@@ -167,42 +138,48 @@ export function CatalogoCarrito({
     return lista.find((x) => x.id === elegido) ?? lista[0]
   }
 
-  /**
-   * Cuántas unidades hay de cada línea en el carrito.
-   *
-   * El escalón de precio no lo decide el renglón sino la línea entera: 3 de un
-   * color y 5 de otro son 8 del mismo decant de 5 ml. Los paquetes quedan
-   * afuera —tienen precio propio— igual que en la base.
-   */
-  const porGrupo = useMemo(
+  // El mínimo sale del escalón de precio más bajo: si el producto se vende de a
+  // 50, no tiene sentido dejar cargar 3 y que el pedido se caiga al confirmarlo.
+  const minimoDe = (p: Producto) =>
+    Math.max(esGranel(p.unidad) ? 0.001 : 1, normalizar(Number(p.minimo_compra ?? 1), p.unidad))
+
+  /** Los renglones que participan del escalón: los paquetes tienen precio propio. */
+  const sueltos = useMemo(
     () =>
-      cantidadesPorGrupo(
-        Object.entries(carrito)
-          .filter(([sku]) => {
-            const p = productos.find((x) => x.sku === sku)
-            return p != null && (p.presentaciones ?? []).length === 0
-          })
-          .map(([sku, r]) => ({ sku, cantidad: r.paquetes })),
-        productos,
-      ),
+      Object.entries(carrito)
+        .filter(([sku]) => {
+          const p = productos.find((x) => x.sku === sku)
+          return p != null && (p.presentaciones ?? []).length === 0
+        })
+        .map(([sku, r]) => ({ sku, cantidad: r.paquetes })),
     [carrito, productos],
   )
 
-  /** Cuántas unidades hay de la línea de este producto, contando la suya. */
-  const delGrupo = (p: Producto) => porGrupo.get(grupoDe(p)) ?? 0
-
   /**
-   * ¿Hay más de un producto en esta línea?
+   * Cuántas unidades hay de cada grupo en el carrito.
    *
-   * Sólo entonces tiene sentido decir "podés combinar": si la línea tiene un
-   * solo color, invitar a mezclar es mandar a buscar algo que no existe.
+   * El escalón no lo decide el renglón sino el grupo entero: 3 de un color y 5
+   * de otro son 8 del mismo decant de 5 ml. Quién va con quién lo dice la base
+   * en `grupo_precio`, que ya viene resuelto en cada renglón de la vidriera.
    */
-  const hayHermanas = (p: Producto) =>
-    productos.filter((x) => grupoDe(x) === grupoDe(p) && (x.presentaciones ?? []).length === 0)
-      .length > 1
+  const porGrupo = useMemo(
+    () => cantidadesPorGrupo(sueltos, productos),
+    [sueltos, productos],
+  )
 
-  /** El precio de ESTE producto, según lo que sume toda su línea. */
+  const delGrupo = (p: Producto) => porGrupo.get(grupoDe(p)) ?? 0
   const precioDe = (p: Producto) => precioSegunGrupo(p, delGrupo(p))
+
+  const cesta: Cesta = {
+    carrito,
+    crudos,
+    escribir,
+    poner,
+    delGrupo,
+    precioDe,
+    presentacionDe,
+    minimoDe,
+  }
 
   const lineas = useMemo(
     () =>
@@ -225,10 +202,9 @@ export function CatalogoCarrito({
             }
           }
 
-          // Se calcula acá adentro y no con `precioDe` para que la
-          // dependencia de `porGrupo` quede a la vista: si no, el memo se
-          // quedaría con precios viejos cuando cambia otro renglón de la
-          // misma línea, que es justo el caso nuevo.
+          // Se calcula acá adentro y no con `precioDe` para que la dependencia
+          // de `porGrupo` quede a la vista: si no, el memo se quedaría con
+          // precios viejos cuando cambia otro renglón del mismo grupo.
           const precio = precioSegunGrupo(p, porGrupo.get(grupoDe(p)) ?? 0)
           return {
             p,
@@ -259,427 +235,109 @@ export function CatalogoCarrito({
     ? cantidadLarga(sumaCantidades, unidadComun)
     : `${numero(lineas.length)} ${lineas.length === 1 ? 'producto' : 'productos'}`
 
-  // Los renglones que no llegan al mínimo del producto. La base los rechaza
-  // igual, pero avisar antes evita que el cliente arme todo el pedido y se
-  // entere recién al confirmarlo.
-  const minimoDe = (p: Producto) =>
-    Math.max(esGranel(p.unidad) ? 0.001 : 1, normalizar(Number(p.minimo_compra ?? 1), p.unidad))
+  // Lo que no llega al mínimo. Se cuenta por GRUPO: con 3 azules y 5 negros
+  // faltan 42 para 50, no 47 de cada color. La base lo rechaza igual, pero
+  // avisar antes evita que el cliente arme todo y se entere al confirmarlo.
+  const cortos = useMemo(() => {
+    const nombre = (sku: string) => {
+      const p = productos.find((x) => x.sku === sku)
+      if (!p) return sku
+      return (p.hermanas_de_grupo ?? 1) > 1 ? p.categoria : (p.nombre_corto ?? p.producto)
+    }
+    return faltaParaElMinimo(sueltos, productos).map((f) => ({
+      ...f,
+      texto: `${nombre(f.nombreSku)}: faltan ${numero(f.falta)} para el mínimo de ${numero(
+        f.minimo,
+      )}`,
+    }))
+  }, [sueltos, productos])
 
-  // Con paquetes no hay "mínimo que no llega": el paquete más chico ya es el
-  // mínimo, y no se puede pedir menos que uno.
-  const cortos = lineas.filter((l) => !l.pres && l.cantidad < minimoDe(l.p))
-
+  // -------------------------------------------------------------- la grilla -
   const texto = busqueda.trim().toLowerCase()
-  const visibles = useMemo(
-    () =>
-      productos
-        // Un producto aparece bajo toda su rama: uno que está en Dorada se
-        // encuentra también entrando por Básicos o por Decants. La rama la
-        // arma la base; acá sólo se pregunta si la elegida está adentro.
-        .filter((p) => rubro === null || normalizarRama(p.categoria_rama).includes(rubro))
-        .filter(
-          (p) =>
-            !texto ||
-            (p.nombre_corto ?? '').toLowerCase().includes(texto) ||
-            p.producto.toLowerCase().includes(texto) ||
-            p.sku.toLowerCase().includes(texto),
-        )
+  const visibles = useMemo(() => {
+    const filtradas = productos
+      .filter((p) => !soloStock || p.hay_stock)
+      .filter(
+        (p) =>
+          !texto ||
+          (p.nombre_corto ?? '').toLowerCase().includes(texto) ||
+          p.producto.toLowerCase().includes(texto) ||
+          p.sku.toLowerCase().includes(texto),
+      )
+
+    return (
+      fichas(filtradas)
+        // Un producto aparece bajo toda su rama: uno cuyo SKU está en "5 ml" se
+        // encuentra también entrando por Color, por Linea Color o por Decants.
+        .filter((f) => rubro === null || f.rama.includes(rubro))
         // Lo que no hay va al final: sigue estando —para que se vea que existe—
         // pero no le come el lugar a lo que sí se puede pedir hoy.
-        .sort((a, b) => Number(b.hay_stock) - Number(a.hay_stock)),
-    [productos, rubro, texto],
-  )
+        .sort((a, b) => Number(b.hayStock) - Number(a.hayStock))
+    )
+  }, [productos, rubro, texto, soloStock])
 
-  // La cascada: una fila por cada eslabón del camino elegido, más una con las
-  // hijas del último. Elegir "Decants" hace aparecer Básicos y Color debajo;
-  // elegir Básicos hace aparecer las suyas, y así hasta donde llegue el árbol.
-  //
-  // Se calcula desde `rubro` en vez de guardarse: el camino hasta una
-  // categoría es un dato del árbol, no del estado. Con una sola variable no
-  // hay forma de que las filas queden contradiciéndose entre sí.
-  const camino = caminoHasta(categorias, rubro)
-  const filas = [null, ...camino.map((c) => c.id)]
-    .map((padre) => hijasDe(categorias, padre))
-    .filter((opciones) => opciones.length > 0)
+  const ficha = useMemo(
+    () => (mirando == null ? null : fichas(productos).find((f) => f.id === mirando) ?? null),
+    [mirando, productos],
+  )
 
   return (
     <div className="space-y-6">
-      {/* --------------------------------------------------------- filtros -- */}
-      <div className="space-y-3">
-        {filas.map((opciones, i) => (
-          <div key={i} className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-            <div
-              className={[
-                'flex w-max gap-2 sm:w-auto sm:flex-wrap',
-                // Los niveles de abajo van más chicos: se lee de un vistazo
-                // cuál manda y cuál está afinando.
-                i > 0 ? 'text-sm' : '',
-              ].join(' ')}
-            >
-              {i === 0 && (
-                <button
-                  type="button"
-                  onClick={() => setRubro(null)}
-                  aria-pressed={rubro === null}
-                  className={solapa(rubro === null, 0)}
-                >
-                  Todo
-                  <span className="ml-1.5 text-xs opacity-60">{productos.length}</span>
-                </button>
-              )}
-              {opciones.map((c) => {
-                // Marcada tanto la elegida como sus ancestros: así el camino
-                // "Decants › Básicos" se ve entero y no sólo la punta.
-                const activa = camino.some((x) => x.id === c.id)
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    // Volver a tocar la que ya está elegida sube un nivel, que
-                    // es lo que uno intenta hacer instintivamente.
-                    onClick={() => setRubro(activa && rubro === c.id ? (c.padre_id ?? null) : c.id)}
-                    aria-pressed={activa}
-                    className={solapa(activa, i)}
-                  >
-                    {c.nombre}
-                    <span className="ml-1.5 text-xs opacity-60">{c.productos}</span>
-                  </button>
-                )
-              })}
+      {/* En el celular no hay costado: la columna se pliega detrás del botón y,
+          cuando se abre, se acuesta arriba de la grilla en vez de pelearle el
+          ancho. */}
+      <button
+        type="button"
+        onClick={() => setFiltros((x) => !x)}
+        aria-expanded={filtros}
+        className="rounded-full border border-arena bg-crema-hueso px-4 py-1.5 text-sm text-tinta-suave lg:hidden"
+      >
+        {filtros ? 'Ocultar filtros' : 'Filtros'}
+      </button>
+
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+        <FiltrosCatalogo
+          categorias={categorias}
+          rubro={rubro}
+          setRubro={(v) => {
+            setRubro(v)
+            setMirando(null)
+          }}
+          busqueda={busqueda}
+          setBusqueda={(v) => {
+            setBusqueda(v)
+            setMirando(null)
+          }}
+          soloStock={soloStock}
+          setSoloStock={setSoloStock}
+          total={fichas(productos).length}
+          abierto={filtros}
+          cerrar={() => setFiltros(false)}
+        />
+
+        <div className="min-w-0 flex-1">
+          {ficha ? (
+            <FichaProducto ficha={ficha} cesta={cesta} volver={() => setMirando(null)} />
+          ) : visibles.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-arena px-6 py-16 text-center text-sm text-tinta-suave">
+              {texto
+                ? `No encontramos nada con "${busqueda.trim()}".`
+                : 'Todavía no hay nada publicado en este rubro.'}
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3">
+              {visibles.map((f) => (
+                <Tarjeta
+                  key={f.id}
+                  ficha={f}
+                  cesta={cesta}
+                  entrar={() => setMirando(f.id)}
+                />
+              ))}
             </div>
-          </div>
-        ))}
-
-        <label className="block">
-          <span className="sr-only">Buscar en el catálogo</span>
-          <input
-            type="search"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar: 10 ml, dorada, jeringa…"
-            className="w-full rounded-full border border-arena bg-crema-hueso px-5 py-2.5 text-sm text-tinta outline-none placeholder:text-tinta-suave/60 focus:border-oro sm:max-w-sm"
-          />
-        </label>
-      </div>
-
-      {/* --------------------------------------------------------- vidriera - */}
-      {visibles.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-arena px-6 py-16 text-center text-sm text-tinta-suave">
-          {texto
-            ? `No encontramos nada con "${busqueda.trim()}".`
-            : 'Todavía no hay nada publicado en este rubro.'}
-        </p>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3">
-          {visibles.map((p) => {
-            const enCarrito = carrito[p.sku]?.paquetes ?? 0
-            const paquetes = p.presentaciones ?? []
-            const enPaquetes = paquetes.length > 0
-            const pres = presentacionDe(p)
-            const escalas = p.escalas ?? []
-            // Al cliente no le importa si está armado o si hay que armarlo: eso
-            // es cocina nuestra. Lo único que necesita saber es si lo puede
-            // pedir, y para eso cuenta todo lo que se puede entregar.
-            const hay = p.hay_stock
-            // El mínimo sale del escalón de precio más bajo: si el producto se
-            // vende de a 50, no tiene sentido dejar cargar 3 y que el pedido se
-            // caiga recién al confirmarlo.
-            const minimo = minimoDe(p)
-            // Con paquetes no hay mínimo que reclamar: el paquete más chico ya
-            // ES el mínimo y no se puede pedir menos que uno. Sin este control,
-            // la tarjeta comparaba 3 PAQUETES contra 10 GRAMOS y avisaba mal.
-            // El mínimo se junta entre todas las variantes de la línea: con
-            // 3 azules y 5 negros faltan 42 para 50, no 47 de cada color.
-            const faltaMinimo = !enPaquetes && enCarrito > 0 && delGrupo(p) < minimo
-            const foto = urlDeFoto(p.foto)
-            const granel = esGranel(p.unidad) && !enPaquetes
-            // Lo que le rinde al cliente. Si el paquete tiene un nombre escrito
-            // a mano —"Aprox. 50 unidades"— gana ése: es tu estimación real,
-            // contando lo que de verdad entra en la bolsita, y le gana a la
-            // división de gramos, que no sabe de acomodo ni de piezas partidas.
-            const rinde = enPaquetes
-              ? (pres?.nombre?.trim() ||
-                 textoEquivalencia(Number(pres?.contenido ?? 0), p.peso_gr, p.unidad))
-              : textoEquivalencia(enCarrito || minimo, p.peso_gr, p.unidad)
-
-            return (
-              <article
-                key={p.sku}
-                className={[
-                  'group flex flex-col overflow-hidden rounded-xl border bg-crema-hueso transition',
-                  enCarrito > 0 ? 'border-oro shadow-sm' : 'border-arena hover:border-oro-claro',
-                  hay ? '' : 'opacity-75',
-                ].join(' ')}
-              >
-                {/* ------------------------------------------------- foto -- */}
-                <div className="relative aspect-square overflow-hidden bg-crema-suave">
-                  {foto ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={foto}
-                      alt={p.nombre_corto ?? p.producto}
-                      loading="lazy"
-                      className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center">
-                      <Monograma size={56} className="opacity-25" />
-                    </div>
-                  )}
-
-                  <span
-                    className={[
-                      'absolute left-2 top-2 rounded-full px-2.5 py-0.5 text-[11px] font-medium backdrop-blur',
-                      hay
-                        ? 'bg-crema-hueso/85 text-oro-oscuro'
-                        : 'bg-tinta/70 text-crema-hueso',
-                    ].join(' ')}
-                  >
-                    {hay ? 'hay stock' : 'sin stock'}
-                  </span>
-
-                  {enCarrito > 0 && !faltaMinimo && (
-                    <span className="absolute right-2 top-2 rounded-full bg-tinta px-2.5 py-0.5 text-[11px] font-medium text-crema-hueso tabular-nums">
-                      {enPaquetes ? `×${numero(enCarrito)}` : enUnidad(enCarrito, p.unidad)}
-                    </span>
-                  )}
-                </div>
-
-                {/* ------------------------------------------------ datos -- */}
-                <div className="flex flex-1 flex-col gap-2 p-3 sm:p-4">
-                  <div>
-                    <h3 className="titulo text-[15px] leading-snug text-tinta sm:text-base">
-                      {p.nombre_corto ?? p.producto}
-                    </h3>
-                    <p className="mt-0.5 text-[11px] uppercase tracking-wider text-tinta-suave/70">
-                      {p.sku}
-                    </p>
-                  </div>
-
-                  <div>
-                    {/* Con paquetes el rótulo es largo —"el paquete de 1.000 g"—
-                        y pegado al precio partía la unidad en otro renglón. Va
-                        debajo, que además lo deja leer de un saque. */}
-                    <p className="text-lg font-semibold tabular-nums text-tinta">
-                      {enPaquetes
-                        ? pesos(Number(pres?.precio ?? 0))
-                        : precioPorUnidad(
-                            delGrupo(p) > 0
-                              ? precioDe(p)
-                              : precioSegunGrupo(p, minimo),
-                            p.unidad,
-                          )}
-                      {!enPaquetes && (
-                        <span className="ml-1 text-xs font-normal text-tinta-suave">
-                          {granel ? `el ${p.unidad === 'gramo' ? 'gramo' : 'ml'}` : 'c/u'}
-                        </span>
-                      )}
-                    </p>
-                    {enPaquetes && (
-                      <p className="text-[11px] text-tinta-suave">
-                        el paquete de {enUnidad(Number(pres?.contenido ?? 0), p.unidad)}
-                      </p>
-                    )}
-                    {!enPaquetes && minimo > 1 && (
-                      <p className="text-[11px] text-tinta-suave">
-                        desde {cantidadLarga(minimo, p.unidad)}
-                      </p>
-                    )}
-                    {rinde && (
-                      <p className="text-[11px] text-tinta-suave/80">{rinde}</p>
-                    )}
-                  </div>
-
-                  {enPaquetes && paquetes.length > 1 && (
-                    <fieldset className="flex flex-wrap gap-1">
-                      <legend className="sr-only">Tamaño de {p.sku}</legend>
-                      {paquetes.map((x) => {
-                        const activa = pres?.id === x.id
-                        return (
-                          <button
-                            key={x.id}
-                            type="button"
-                            aria-pressed={activa}
-                            onClick={() => poner(p.sku, enCarrito || 1, x.id)}
-                            className={[
-                              'rounded border px-2 py-0.5 text-[11px] tabular-nums transition',
-                              activa
-                                ? 'border-oro bg-oro-palido text-oro-oscuro'
-                                : 'border-arena text-tinta-suave hover:border-oro-claro',
-                            ].join(' ')}
-                          >
-                            {enUnidad(Number(x.contenido), p.unidad)}
-                          </button>
-                        )
-                      })}
-                    </fieldset>
-                  )}
-
-                  {!enPaquetes && escalas.length > 1 && (
-                    <ul className="flex flex-wrap gap-1">
-                      {escalas.map((e) => {
-                        // Se marca contra lo que suma la LÍNEA, no este
-                        // renglón: si no, con 30 dorados y 20 plateados la
-                        // tarjeta resaltaría el escalón de 10 mientras la base
-                        // cobra el de 50.
-                        const enLinea = delGrupo(p)
-                        const activa =
-                          enLinea >= Number(e.desde) &&
-                          (e.hasta === null || enLinea <= Number(e.hasta))
-                        return (
-                          <li
-                            key={String(e.desde)}
-                            className={[
-                              'rounded border px-1.5 py-0.5 text-[10px] tabular-nums transition',
-                              activa
-                                ? 'border-oro bg-oro-palido text-oro-oscuro'
-                                : 'border-arena text-tinta-suave',
-                            ].join(' ')}
-                          >
-                            {/* La abreviatura sólo cuando aporta: "200 g+" hace
-                                falta, "200 u.+" es ruido — el número ya se
-                                entiende y el precio de al lado dice "c/u". */}
-                            {granel
-                              ? enUnidad(Number(e.desde), p.unidad)
-                              : numero(Number(e.desde))}
-                            + {precioPorUnidad(Number(e.precio), p.unidad)}
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  )}
-
-                  {/* Lo que hace que esto sirva: el cliente no puede aprovechar
-                      un escalón que no sabe que existe. Se avisa sólo cuando
-                      está a mano, y contando toda la línea: las unidades que
-                      faltan las puede poner en cualquiera de los colores. */}
-                  {!enPaquetes && (() => {
-                    const cerca = proximoEscalon(p, delGrupo(p))
-                    if (!cerca) return null
-                    return (
-                      <p className="rounded border border-oro-claro bg-oro-palido/50 px-1.5 py-1 text-[10px] leading-snug text-oro-oscuro">
-                        Con {enUnidad(cerca.faltan, p.unidad)} más de{' '}
-                        {p.categoria} te queda a{' '}
-                        {precioPorUnidad(cerca.precio, p.unidad)}
-                        {hayHermanas(p) && ', y podés combinar variantes'}
-                      </p>
-                    )
-                  })()}
-
-                  {/* ---------------------------------------- cantidad -- */}
-                  <div className="mt-auto pt-1">
-                    {enCarrito === 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => poner(p.sku, enPaquetes ? 1 : minimo, pres?.id ?? null)}
-                        className="w-full rounded-lg border border-tinta bg-tinta px-3 py-2 text-sm font-medium text-crema-hueso transition hover:bg-tinta/90"
-                      >
-                        {/* Sin stock igual se puede pedir: queda como pedido
-                            pendiente y se entrega cuando llega o se arma. Pero
-                            decirle "Agregar" prometería algo que hoy no hay. */}
-                        {hay ? 'Agregar' : 'Encargar'}
-                        {!enPaquetes && minimo > 1 && (
-                          <span className="ml-1 font-normal opacity-70">
-                            {enUnidad(minimo, p.unidad)}
-                          </span>
-                        )}
-                      </button>
-                    ) : (
-                      <div className="flex items-stretch overflow-hidden rounded-lg border border-arena bg-white">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            poner(p.sku, Math.max(0, enCarrito - (enPaquetes ? 1 : minimo)))
-                          }
-                          aria-label={
-                            enPaquetes
-                              ? `Sacar un paquete de ${p.sku}`
-                              : `Sacar ${enUnidad(minimo, p.unidad)} de ${p.sku}`
-                          }
-                          className="px-3 text-lg leading-none text-tinta-suave transition hover:bg-crema-suave hover:text-tinta"
-                        >
-                          −
-                        </button>
-                        {/* Lo que se vende por peso NO puede ser un campo
-                            `type="number"`: ese tipo valida contra la locale
-                            del navegador y descarta la coma, así que quien
-                            escribe "250,5" —como se escribe acá— se queda sin
-                            nada y sin explicación. De texto con teclado
-                            numérico, coma y punto valen las dos. Lo que se
-                            cuenta de a uno sigue siendo numérico, que en el
-                            celular da las flechitas y un teclado mejor. */}
-                        <input
-                          type={granel ? 'text' : 'number'}
-                          inputMode="decimal"
-                          min={granel ? undefined : '0'}
-                          step={granel ? undefined : paso(p.unidad)}
-                          value={
-                            granel
-                              ? (crudos[p.sku] ?? String(enCarrito).replace('.', ','))
-                              : enCarrito
-                          }
-                          onChange={(e) => {
-                            const v = e.target.value
-                            if (!granel) return poner(p.sku, Number(v))
-                            // Se guarda lo tecleado tal cual para no pelearle
-                            // al usuario mientras escribe "250," a medio hacer.
-                            if (!/^[\d.,]*$/.test(v)) return
-                            setCrudos((c) => ({ ...c, [p.sku]: v }))
-                            poner(p.sku, aNumero(v))
-                          }}
-                          onBlur={() =>
-                            granel && setCrudos((c) => {
-                              const r = { ...c }
-                              delete r[p.sku]
-                              return r
-                            })
-                          }
-                          aria-label={`Cantidad de ${p.sku}`}
-                          className="w-full min-w-0 border-x border-arena py-2 text-center text-sm tabular-nums outline-none focus:bg-crema-suave"
-                        />
-                        <span className="flex items-center whitespace-nowrap pr-2 text-xs text-tinta-suave">
-                          {/* Abreviado: en la grilla de dos columnas del
-                              celular, "paquetes" entero le come el lugar al
-                              número y lo deja cortado. */}
-                          {enPaquetes ? 'paq.' : simbolo(p.unidad)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => poner(p.sku, enCarrito + (enPaquetes ? 1 : minimo))}
-                          aria-label={
-                            enPaquetes
-                              ? `Sumar un paquete a ${p.sku}`
-                              : `Sumar ${enUnidad(minimo, p.unidad)} a ${p.sku}`
-                          }
-                          className="px-3 text-lg leading-none text-tinta-suave transition hover:bg-crema-suave hover:text-tinta"
-                        >
-                          +
-                        </button>
-                      </div>
-                    )}
-
-                    {faltaMinimo ? (
-                      <p className="mt-1.5 text-[11px] text-red-700">
-                        el mínimo son {enUnidad(minimo, p.unidad)}
-                      </p>
-                    ) : (
-                      enCarrito > 0 && (
-                        <p className="mt-1.5 text-[11px] tabular-nums text-tinta-suave">
-                          {enPaquetes
-                            ? `${enUnidad(enCarrito * Number(pres?.contenido ?? 0), p.unidad)} · ${pesos(
-                                enCarrito * Number(pres?.precio ?? 0),
-                              )}`
-                            : `subtotal ${pesos(precioDe(p) * enCarrito)}`}
-                        </p>
-                      )
-                    )}
-                  </div>
-                </div>
-              </article>
-            )
-          })}
+          )}
         </div>
-      )}
+      </div>
 
       {/* ---------------------------------------------------------- carrito - */}
       {lineas.length > 0 && (
@@ -719,17 +377,8 @@ export function CatalogoCarrito({
           </div>
 
           {cortos.length > 0 && (
-            <p className="mt-2 text-sm text-red-700">
-              {cortos
-                .map(
-                  (l) =>
-                    `${l.p.nombre_corto ?? l.p.producto} se vende de a ${enUnidad(
-                      minimoDe(l.p),
-                      l.p.unidad,
-                    )} como mínimo`,
-                )
-                .join(' · ')}
-              .
+            <p role="alert" className="mt-2 text-sm text-red-700">
+              {cortos.map((c) => c.texto).join(' · ')}.
             </p>
           )}
 
@@ -770,10 +419,7 @@ export function CatalogoCarrito({
                 </label>
 
                 {/* No se pregunta de qué sede sale: eso lo decide quien prepara
-                    el pedido, mirando dónde hay stock. Preguntárselo al cliente
-                    era pedirle que decida algo que no puede saber, y después el
-                    admin lo cambiaba igual. Cuando esté listo se le avisa por
-                    WhatsApp dónde pasar a buscarlo. */}
+                    el pedido, mirando dónde hay stock. */}
                 {entrega === 'retiro' ? (
                   <p className="self-end text-sm text-tinta-suave">
                     Cuando esté listo te escribimos por WhatsApp y te decimos
@@ -832,5 +478,216 @@ export function CatalogoCarrito({
         </section>
       )}
     </div>
+  )
+}
+
+/**
+ * La tarjeta de un producto.
+ *
+ * Con una sola variante resuelve ahí mismo: entrar a una ficha para elegir
+ * entre una opción sería un paso de más. Con varias es una puerta, y muestra lo
+ * que hace falta para decidir si abrirla: desde cuánto sale y cuántos colores
+ * hay.
+ */
+function Tarjeta({
+  ficha,
+  cesta,
+  entrar,
+}: {
+  ficha: Ficha
+  cesta: Cesta
+  entrar: () => void
+}) {
+  const una = ficha.variantes.length === 1 ? ficha.variantes[0] : null
+  const p = una ?? ficha.portada
+  const foto = urlDeFoto(p.foto)
+  const enPaquetes = (p.presentaciones ?? []).length > 0
+  const pres = cesta.presentacionDe(p)
+  const minimo = cesta.minimoDe(p)
+  const enCarrito = cesta.carrito[p.sku]?.paquetes ?? 0
+
+  // Lo que hay en el carrito de TODO el producto, no sólo de la portada: si
+  // alguien puso doce azules, la tarjeta tiene que decirlo aunque la foto sea
+  // la del dorado.
+  const puestas = ficha.variantes.reduce(
+    (a, x) => a + (cesta.carrito[x.sku]?.paquetes ?? 0),
+    0,
+  )
+
+  // Lo que sale pedir el mínimo de cada variante. La tarjeta muestra ese
+  // número —no el del escalón más barato— porque es el que alguien va a pagar
+  // si entra y pide lo menos posible: anunciar el de 200 unidades sería un
+  // precio que casi nadie consigue, y enterarse adentro es peor que no verlo.
+  const arranques = ficha.variantes.map((x) =>
+    (x.presentaciones ?? []).length > 0
+      ? Number((x.presentaciones ?? [])[0]?.precio ?? 0)
+      : precioSegunGrupo(x, cesta.minimoDe(x)),
+  )
+  const barato = Math.min(...arranques)
+  const caro = Math.max(...arranques)
+
+  const unidad: Unidad = p.unidad
+  const cerca = una && !enPaquetes ? proximoEscalon(una, cesta.delGrupo(una)) : null
+  const cuantosGrupos = bloques(ficha).length
+
+  // El mejor escalón que ofrece el producto. En una tarjeta que ya no muestra
+  // casilleros, es lo único que dice por qué conviene entrar: sin esto la
+  // grilla sería una lista de precios de a uno y el descuento por cantidad
+  // —que es de lo que vive el negocio— quedaría escondido dos clicks adentro.
+  const mejor = ficha.variantes
+    .flatMap((x) => x.escalas ?? [])
+    .filter((e) => Number(e.precio) < caro)
+    .sort((a, b) => Number(a.precio) - Number(b.precio))[0]
+
+  return (
+    <article
+      data-producto={ficha.nombre}
+      // Los SKU que hay adentro. La tarjeta ya no los muestra —el cliente
+      // busca "Linea Color", no "DEC-5-PLA"— pero desde afuera sigue siendo la
+      // única forma de decir "esta tarjeta y no otra".
+      data-skus={ficha.variantes.map((x) => x.sku).join(' ')}
+      className={[
+        'group flex flex-col overflow-hidden rounded-xl border bg-crema-hueso transition',
+        puestas > 0 ? 'border-oro shadow-sm' : 'border-arena hover:border-oro-claro',
+        ficha.hayStock ? '' : 'opacity-75',
+      ].join(' ')}
+    >
+      <button
+        type="button"
+        onClick={entrar}
+        aria-label={`Ver ${ficha.nombre}`}
+        className="relative block aspect-square overflow-hidden bg-crema-suave text-left"
+      >
+        {foto ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={foto}
+            alt={ficha.nombre}
+            loading="lazy"
+            className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <Monograma size={56} className="opacity-25" />
+          </div>
+        )}
+
+        <span
+          className={[
+            'absolute left-2 top-2 rounded-full px-2.5 py-0.5 text-[11px] font-medium backdrop-blur',
+            ficha.hayStock
+              ? 'bg-crema-hueso/85 text-oro-oscuro'
+              : 'bg-tinta/70 text-crema-hueso',
+          ].join(' ')}
+        >
+          {ficha.hayStock ? 'hay stock' : 'sin stock'}
+        </span>
+
+        {puestas > 0 && (
+          <span className="absolute right-2 top-2 rounded-full bg-tinta px-2.5 py-0.5 text-[11px] font-medium text-crema-hueso tabular-nums">
+            {enPaquetes ? `×${numero(puestas)}` : enUnidad(puestas, unidad)}
+          </span>
+        )}
+      </button>
+
+      <div className="flex flex-1 flex-col gap-2 p-3 sm:p-4">
+        <div>
+          <h3 className="titulo text-[15px] leading-snug text-tinta sm:text-base">
+            <button type="button" onClick={entrar} className="text-left hover:underline hover:decoration-oro hover:underline-offset-4">
+              {una ? (una.nombre_corto ?? ficha.nombre) : ficha.nombre}
+            </button>
+          </h3>
+          <p className="mt-0.5 text-[11px] uppercase tracking-wider text-tinta-suave/70">
+            {una ? una.sku : `${numero(ficha.variantes.length)} variantes`}
+          </p>
+        </div>
+
+        <div>
+          <p className="text-lg font-semibold tabular-nums text-tinta">
+            {/* "desde" sólo cuando los colores no valen todos lo mismo: si
+                valen igual, decirlo insinúa una variación que no existe. */}
+            {!una && caro > barato && (
+              <span className="mr-1 text-xs font-normal text-tinta-suave">desde</span>
+            )}
+            {enPaquetes && una
+              ? pesos(Number(pres?.precio ?? 0))
+              : precioPorUnidad(
+                  una && cesta.delGrupo(una) > 0 ? cesta.precioDe(una) : barato,
+                  unidad,
+                )}
+            {!(enPaquetes && una) && (
+              <span className="ml-1 text-xs font-normal text-tinta-suave">
+                {esGranel(unidad) ? `el ${unidad === 'gramo' ? 'gramo' : 'ml'}` : 'c/u'}
+              </span>
+            )}
+          </p>
+          {enPaquetes && una && (
+            <p className="text-[11px] text-tinta-suave">
+              el paquete de {enUnidad(Number(pres?.contenido ?? 0), unidad)}
+            </p>
+          )}
+          {una && !enPaquetes && minimo > 1 && (
+            <p className="text-[11px] text-tinta-suave">
+              desde {cantidadLarga(minimo, unidad)}
+            </p>
+          )}
+          {!una && (
+            <p className="text-[11px] text-tinta-suave">
+              {mejor && `hasta ${precioPorUnidad(mejor.precio, unidad)} desde ${numero(mejor.desde)} · `}
+              {cuantosGrupos > 1
+                ? 'se suman por subcategoría'
+                : 'las cantidades se suman entre variantes'}
+            </p>
+          )}
+        </div>
+
+        {cerca && una && (
+          <p className="rounded border border-oro-claro bg-oro-palido/50 px-1.5 py-1 text-[10px] leading-snug text-oro-oscuro">
+            Con {enUnidad(cerca.faltan, unidad)} más te queda a{' '}
+            {precioPorUnidad(cerca.precio, unidad)}
+          </p>
+        )}
+
+        <div className="mt-auto pt-1">
+          {!una ? (
+            <button
+              type="button"
+              onClick={entrar}
+              className="w-full rounded-lg border border-tinta bg-tinta px-3 py-2 text-sm font-medium text-crema-hueso transition hover:bg-tinta/90"
+            >
+              {puestas > 0 ? 'Ver y ajustar' : 'Elegir colores'}
+            </button>
+          ) : enCarrito === 0 ? (
+            <button
+              type="button"
+              onClick={() => cesta.poner(p.sku, enPaquetes ? 1 : minimo, pres?.id ?? null)}
+              className="w-full rounded-lg border border-tinta bg-tinta px-3 py-2 text-sm font-medium text-crema-hueso transition hover:bg-tinta/90"
+            >
+              {/* Sin stock igual se puede pedir: queda como pedido pendiente y
+                  se entrega cuando llega o se arma. Pero decirle "Agregar"
+                  prometería algo que hoy no hay. */}
+              {ficha.hayStock ? 'Agregar' : 'Encargar'}
+              {!enPaquetes && minimo > 1 && (
+                <span className="ml-1 font-normal opacity-70">
+                  {enUnidad(minimo, unidad)}
+                </span>
+              )}
+            </button>
+          ) : (
+            <ContadorCantidad p={una} cesta={cesta} />
+          )}
+
+          {una && enCarrito > 0 && (
+            <p className="mt-1.5 text-[11px] tabular-nums text-tinta-suave">
+              {enPaquetes
+                ? `${enUnidad(enCarrito * Number(pres?.contenido ?? 0), unidad)} · ${pesos(
+                    enCarrito * Number(pres?.precio ?? 0),
+                  )}`
+                : `subtotal ${pesos(cesta.precioDe(una) * enCarrito)}`}
+            </p>
+          )}
+        </div>
+      </div>
+    </article>
   )
 }

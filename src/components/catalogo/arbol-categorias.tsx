@@ -20,6 +20,10 @@ export type CategoriaPanel = NodoCategoria & {
   hijas: number
   productos: number
   variantes: number
+  /** Si las variantes que cuelgan de acá suman entre sí para el escalón. */
+  agrupa_cantidades: boolean
+  /** Cuántas variantes arman grupo justo en este nodo (no en toda la rama). */
+  agrupadas: number
 }
 
 /**
@@ -121,6 +125,17 @@ function Rama({
           {!cat.activo && (
             <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">
               oculta
+            </span>
+          )}
+          {/* Sólo se marca lo excepcional. Que sumen es la regla, y un cartel
+              en cada nodo diciendo lo normal no informa: hace ruido. */}
+          {!cat.agrupa_cantidades && cat.agrupadas > 0 && (
+            <span
+              data-sin-agrupar
+              title="Las variantes de este nodo no suman entre sí: cada una llega sola al mínimo y al escalón."
+              className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800"
+            >
+              no suman entre sí
             </span>
           )}
           <span className="text-xs text-stone-500">
@@ -262,6 +277,35 @@ function FormCategoria({
           />
         </label>
       </div>
+
+      {/* El interruptor del precio compartido.
+          Va prendido por defecto porque es lo que se quiere casi siempre: los
+          colores de una misma línea y tamaño suman entre sí. Se apaga cuando
+          en un mismo nodo conviven cosas que no se pueden mezclar —los Decants
+          Básicos, que están todos juntos pero son de tamaños distintos—.
+          El campo oculto va antes: un casillero sin tildar no manda nada, y
+          sin él "destildado" y "no vino el campo" serían lo mismo. */}
+      <input type="hidden" name="agrupa_cantidades" value="0" />
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          name="agrupa_cantidades"
+          value="1"
+          defaultChecked={cat?.agrupa_cantidades ?? true}
+          className="mt-0.5 h-4 w-4 rounded border-stone-300 accent-stone-900"
+        />
+        <span>
+          Las cantidades se suman entre sí
+          <span className="mt-0.5 block text-xs text-stone-500">
+            3 de un color y 5 de otro son 8 para el escalón de precio y para el
+            mínimo. Destildalo si acá adentro conviven tamaños distintos: cada
+            variante vuelve a contar sola.
+            {cat && cat.agrupadas > 0 && (
+              <> Hoy arman grupo acá {cat.agrupadas} variante(s).</>
+            )}
+          </span>
+        </span>
+      </label>
 
       {res.error && (
         <p role="alert" className="text-sm text-red-700">

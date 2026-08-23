@@ -35,6 +35,16 @@ export default async function Categorias() {
           producto elige el punto que vale para todas sus variantes, y cada
           variante puede afinar una capa más.
         </p>
+        <p className="mt-2 text-sm text-stone-500">
+          El nodo más profundo de cada SKU es también el que decide{' '}
+          <strong className="font-medium text-stone-700">
+            qué cantidades se suman
+          </strong>{' '}
+          para el escalón de precio: si los colores de 5 ml cuelgan de un nodo y
+          los de 10 ml de otro, 30 de 5 ml y 20 de 10 ml no se mezclan. Cuando
+          en un mismo nodo conviven tamaños distintos, destildá «las cantidades
+          se suman entre sí» al editarlo y cada variante vuelve a contar sola.
+        </p>
       </div>
 
       <section className="rounded-lg border border-stone-200 bg-white px-4 py-4">
