@@ -24,7 +24,7 @@ export async function crearTransferencia(
 
   const origen = Number(formData.get('sede_origen_id'))
   const destino = Number(formData.get('sede_destino_id'))
-  const transportista = String(formData.get('transportista') ?? '').trim()
+  const notas = String(formData.get('notas') ?? '').trim()
 
   const skus = formData.getAll('item_sku').map(String)
   const cants = formData.getAll('item_cantidad').map(String)
@@ -41,7 +41,7 @@ export async function crearTransferencia(
     p_origen_id: origen,
     p_destino_id: destino,
     p_items: items,
-    p_transportista: transportista || null,
+    p_notas: notas || null,
     p_usuario_id: perfil.id,
   })
 
@@ -51,10 +51,11 @@ export async function crearTransferencia(
   }
 
   revalidatePath('/panel/transferencias')
-  return { ok: `${data} creada. Todavía no salió: falta despacharla.` }
+  return { ok: `${data} anotada. El stock se mueve cuando la lleves.` }
 }
 
-export async function despachar(
+/** El viaje entero: sale de una sede y entra en la otra, de una. */
+export async function transferir(
   _prev: EstadoTrf,
   formData: FormData,
 ): Promise<EstadoTrf> {
@@ -63,64 +64,30 @@ export async function despachar(
   if (!id) return { error: 'Falta la transferencia.' }
 
   const supabase = await createClient()
-  const { error } = await supabase.rpc('fn_despachar_transferencia', {
+  const { data, error } = await supabase.rpc('fn_transferir', {
     p_transf_id: id,
     p_usuario_id: perfil.id,
   })
 
   if (error) {
-    loguear('despachar', error)
+    loguear('transferir', error)
     return { error: error.message }
   }
 
   revalidatePath('/panel/transferencias')
   revalidatePath('/panel/stock')
-  return { ok: 'Despachada: el stock ya salió del origen.' }
+  revalidatePath('/panel')
+  return { ok: `${data} lista: el stock ya está en la otra sede.` }
 }
 
-export async function recibir(
-  _prev: EstadoTrf,
-  formData: FormData,
-): Promise<EstadoTrf> {
-  const perfil = await requireAdmin()
-  const id = Number(formData.get('transferencia_id'))
-
-  const skus = formData.getAll('rec_sku').map(String)
-  const cants = formData.getAll('rec_cantidad').map(String)
-  const obs = formData.getAll('rec_obs').map(String)
-  const recibido = skus.map((sku, i) => ({
-    sku,
-    cantidad: aNumero(cants[i] ?? '0'),
-    observacion: (obs[i] ?? '').trim(),
-  }))
-
-  if (!id) return { error: 'Falta la transferencia.' }
-
-  const supabase = await createClient()
-  const { error } = await supabase.rpc('fn_confirmar_recepcion_transferencia', {
-    p_transf_id: id,
-    p_recibido: recibido,
-    p_usuario_id: perfil.id,
-  })
-
-  if (error) {
-    loguear('recibir', error)
-    return { error: error.message }
-  }
-
-  revalidatePath('/panel/transferencias')
-  revalidatePath('/panel/stock')
-  return { ok: 'Recibida: el stock ya entró en el destino.' }
-}
-
-export async function cancelar(formData: FormData): Promise<void> {
+export async function borrar(formData: FormData): Promise<void> {
   await requireAdmin()
   const id = Number(formData.get('transferencia_id'))
   if (!id) return
 
   const supabase = await createClient()
-  const { error } = await supabase.rpc('fn_cancelar_transferencia', { p_transf_id: id })
-  if (error) loguear('cancelar', error)
+  const { error } = await supabase.rpc('fn_borrar_transferencia', { p_transf_id: id })
+  if (error) loguear('borrar', error)
 
   revalidatePath('/panel/transferencias')
 }

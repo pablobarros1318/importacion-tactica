@@ -3,8 +3,7 @@
 import { useActionState, useState } from 'react'
 import {
   crearTransferencia,
-  despachar,
-  recibir,
+  transferir,
   type EstadoTrf,
 } from '@/app/(panel)/panel/transferencias/acciones'
 import { numero } from '@/lib/format'
@@ -88,9 +87,9 @@ export function FormTransferencia({
 
         <label className="text-sm">
           <span className="mb-1 block font-medium">
-            Cómo va <span className="font-normal text-stone-400">(opcional)</span>
+            Nota <span className="font-normal text-stone-400">(opcional)</span>
           </span>
-          <input name="transportista" placeholder="Andreani, lo llevo yo…" className={campo} />
+          <input name="notas" placeholder="lo llevo el sábado" className={campo} />
         </label>
       </div>
 
@@ -175,7 +174,7 @@ export function FormTransferencia({
         disabled={pendiente || delOrigen.length === 0}
         className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-60"
       >
-        {pendiente ? 'Creando…' : 'Crear transferencia'}
+        {pendiente ? 'Anotando…' : 'Dejarla preparada'}
       </button>
       {delOrigen.length === 0 && (
         <p className="text-xs text-stone-500">
@@ -186,117 +185,71 @@ export function FormTransferencia({
   )
 }
 
-/** Botón de despacho: saca el stock del origen. */
-export function BotonDespachar({ id }: { id: number }) {
-  const [estado, accion, pendiente] = useActionState(despachar, inicial)
+export type ItemEnViaje = { sku: string; producto: string; cantidad: number }
+
+/**
+ * El único botón del flujo: la caja viajó.
+ *
+ * Antes eran dos —despachar y después recibir—, con la mercadería flotando
+ * entre medio y una pantalla para anotar renglón por renglón lo que llegó.
+ * Acá la lleva la misma persona que la preparó: cuando la descarga, el stock
+ * sale de una sede y entra en la otra en el mismo momento.
+ *
+ * Pide confirmar una sola vez, y no por trámite: es el paso que mueve stock de
+ * verdad, y hasta acá no se movió nada.
+ */
+export function BotonTransferir({
+  id,
+  numero: numeroTrf,
+  destino,
+  unidades,
+}: {
+  id: number
+  numero: string
+  destino: string
+  unidades: number
+}) {
+  const [estado, accion, pendiente] = useActionState(transferir, inicial)
+  const [seguro, setSeguro] = useState(false)
+
+  if (!seguro) {
+    return (
+      <button
+        type="button"
+        onClick={() => setSeguro(true)}
+        data-transferir={numeroTrf}
+        className="rounded-md bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-800"
+      >
+        Ya la llevé
+      </button>
+    )
+  }
+
   return (
-    <form action={accion} className="inline-flex flex-wrap items-center gap-2">
+    <form action={accion} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="transferencia_id" value={id} />
+      <span className="text-xs text-stone-600">
+        {numero(unidades)} unidades pasan a {destino}.
+      </span>
       <button
         type="submit"
         disabled={pendiente}
-        className="rounded-md bg-stone-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-stone-800 disabled:opacity-60"
+        className="rounded-md bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-60"
       >
-        {pendiente ? 'Despachando…' : 'Despachar'}
+        {pendiente ? 'Moviendo…' : 'Sí, mover el stock'}
+      </button>
+      <button
+        type="button"
+        onClick={() => setSeguro(false)}
+        className="px-2 py-1.5 text-sm text-stone-500 hover:text-stone-900"
+      >
+        Todavía no
       </button>
       {estado.error && (
         <p role="alert" className="w-full text-xs text-red-700">
           {estado.error}
         </p>
       )}
-    </form>
-  )
-}
-
-export type ItemEnViaje = { sku: string; producto: string; enviada: number }
-
-/** Recepción: se anota lo que realmente llegó, renglón por renglón. */
-export function FormRecibir({ id, items }: { id: number; items: ItemEnViaje[] }) {
-  const [abierto, setAbierto] = useState(false)
-  const [estado, accion, pendiente] = useActionState(recibir, inicial)
-  const [filas, setFilas] = useState(items.map((i) => String(i.enviada)))
-
-  if (!abierto) {
-    return (
-      <button
-        type="button"
-        onClick={() => setAbierto(true)}
-        className="rounded-md bg-stone-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-stone-800"
-      >
-        Recibir
-      </button>
-    )
-  }
-
-  return (
-    <form action={accion} className="w-full rounded-md bg-stone-50 px-3 py-3">
-      <input type="hidden" name="transferencia_id" value={id} />
-      <p className="text-sm font-medium">¿Qué llegó?</p>
-      <p className="mt-0.5 text-xs text-stone-500">
-        Si falta algo, poné lo que llegó de verdad: la transferencia queda
-        marcada con diferencias y el faltante no entra al stock.
-      </p>
-
-      <div className="mt-3 space-y-2">
-        {items.map((it, i) => (
-          <div key={it.sku} className="flex flex-wrap items-center gap-2">
-            <input type="hidden" name="rec_sku" value={it.sku} />
-            <span className="min-w-0 flex-1 text-sm">
-              {it.producto}
-              <span className="ml-2 text-xs text-stone-400">
-                {it.sku} · salieron {numero(it.enviada)}
-              </span>
-            </span>
-            <input
-              type="text"
-              inputMode="decimal"
-              name="rec_cantidad"
-              min="0"
-              
-              required
-              value={filas[i] ?? ''}
-              onChange={(e) =>
-                setFilas((f) => f.map((x, j) => (j === i ? e.target.value : x)))
-              }
-              aria-label={`Recibidas de ${it.sku}`}
-              className="w-24 rounded-md border border-stone-300 px-2 py-1 text-right text-sm tabular-nums outline-none focus:border-stone-900"
-            />
-            <input
-              name="rec_obs"
-              placeholder={Number(filas[i]) < it.enviada ? '¿qué pasó?' : ''}
-              className="w-44 rounded-md border border-stone-300 px-2 py-1 text-sm outline-none focus:border-stone-900"
-            />
-          </div>
-        ))}
-      </div>
-
-      {estado.error && (
-        <p role="alert" className="mt-2 text-sm text-red-700">
-          {estado.error}
-        </p>
-      )}
-      {estado.ok && (
-        <p role="status" className="mt-2 text-sm text-emerald-700">
-          {estado.ok}
-        </p>
-      )}
-
-      <div className="mt-3 flex gap-2">
-        <button
-          type="submit"
-          disabled={pendiente}
-          className="rounded-md bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-60"
-        >
-          {pendiente ? 'Recibiendo…' : 'Confirmar recepción'}
-        </button>
-        <button
-          type="button"
-          onClick={() => setAbierto(false)}
-          className="rounded-md px-2 py-1.5 text-sm text-stone-500 hover:bg-stone-100"
-        >
-          Volver
-        </button>
-      </div>
     </form>
   )
 }

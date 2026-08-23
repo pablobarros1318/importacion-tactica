@@ -1,15 +1,13 @@
 import { requireAdmin, getSedes } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { getSedeActiva } from '@/lib/sede'
-import { numero, fecha, haceCuanto } from '@/lib/format'
+import { numero, fecha } from '@/lib/format'
 import {
   FormTransferencia,
-  BotonDespachar,
-  FormRecibir,
+  BotonTransferir,
   type Disponible,
-  type ItemEnViaje,
 } from '@/components/transferencias/form-transferencia'
-import { cancelar } from './acciones'
+import { borrar } from './acciones'
 import { ordenarPor } from '@/lib/orden'
 
 export const metadata = { title: 'Transferencias' }
@@ -20,39 +18,19 @@ type Trf = {
   estado: string
   origen: string
   destino: string
-  transportista: string | null
-  fecha_envio: string | null
-  fecha_recepcion: string | null
+  observaciones: string | null
+  transferida_at: string | null
   created_at: string
   renglones: number
-  enviadas: number
-  recibidas: number | null
-  diferencia: number
-  envio: string | null
-  recibio: string | null
+  unidades: number
+  quien: string | null
 }
 
 type Item = {
   transferencia_id: number
   sku: string
   producto: string
-  cantidad_enviada: number
-  cantidad_recibida: number | null
-  observacion: string | null
-}
-
-const COLOR_ESTADO: Record<string, string> = {
-  borrador: 'bg-stone-100 text-stone-600',
-  en_transito: 'bg-indigo-50 text-indigo-700',
-  recibida: 'bg-emerald-50 text-emerald-700',
-  recibida_con_diferencias: 'bg-amber-50 text-amber-700',
-}
-
-const TEXTO_ESTADO: Record<string, string> = {
-  borrador: 'sin despachar',
-  en_transito: 'en viaje',
-  recibida: 'recibida',
-  recibida_con_diferencias: 'recibida con diferencias',
+  cantidad: number
 }
 
 export default async function Transferencias({
@@ -94,20 +72,19 @@ export default async function Transferencias({
 
   // Si se entra desde una sugerencia del inicio, el formulario abre con ese
   // producto y su cantidad ya cargados: era eso o buscarlo de nuevo en la lista.
-  const sugerencias0 = (sugRes.data ?? []) as {
+  const sugerencias = (sugRes.data ?? []) as {
     sku: string
     producto: string
     desde: string
     hacia: string
     sugerido: number
   }[]
-  const sugerencias = sugerencias0
   const sugerido = skuPedido
     ? sugerencias.find((x) => x.sku.toUpperCase() === skuPedido.toUpperCase())
     : undefined
 
-  const abiertas = trfs.filter((t) => t.estado === 'borrador' || t.estado === 'en_transito')
-  const cerradas = trfs.filter((t) => t.estado !== 'borrador' && t.estado !== 'en_transito')
+  const preparadas = trfs.filter((t) => t.estado === 'preparada')
+  const hechas = trfs.filter((t) => t.estado !== 'preparada')
 
   const itemsDe = (id: number) => items.filter((i) => Number(i.transferencia_id) === id)
 
@@ -116,8 +93,8 @@ export default async function Transferencias({
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Transferencias</h1>
         <p className="mt-1 text-sm text-stone-500">
-          Stock que se manda de una sede a la otra. Sale cuando despachás y entra
-          cuando el que recibe lo confirma; mientras tanto está en viaje.
+          Stock que pasa de una sede a la otra. Se deja anotado qué va en la
+          caja, y cuando la llevás, el stock cambia de sede de una sola vez.
         </p>
       </div>
 
@@ -141,7 +118,7 @@ export default async function Transferencias({
 
       <section className="rounded-lg border border-stone-200 bg-white">
         <div className="border-b border-stone-100 px-4 py-3">
-          <h2 className="font-medium">Nueva transferencia</h2>
+          <h2 className="font-medium">Preparar una</h2>
         </div>
         <div className="px-4 py-4">
           <FormTransferencia
@@ -154,78 +131,69 @@ export default async function Transferencias({
         </div>
       </section>
 
-      {abiertas.length > 0 && (
+      {preparadas.length > 0 && (
         <section className="rounded-lg border border-stone-200 bg-white">
           <div className="border-b border-stone-100 px-4 py-3">
-            <h2 className="font-medium">En curso</h2>
+            <h2 className="font-medium">Preparadas para llevar</h2>
+            <p className="mt-0.5 text-xs text-stone-500">
+              El stock todavía figura en la sede de origen, porque todavía está
+              ahí. Se mueve cuando tocás &ldquo;ya la llevé&rdquo;.
+            </p>
           </div>
           <div className="divide-y divide-stone-100">
-            {abiertas.map((t) => {
-              const suyos = itemsDe(Number(t.id))
-              const enViaje: ItemEnViaje[] = suyos.map((i) => ({
-                sku: i.sku,
-                producto: i.producto,
-                enviada: Number(i.cantidad_enviada),
-              }))
-              return (
-                <div key={t.id} className="px-4 py-3">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="font-medium">{t.numero}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${COLOR_ESTADO[t.estado]}`}>
-                      {TEXTO_ESTADO[t.estado] ?? t.estado}
-                    </span>
-                    <span className="text-sm text-stone-600">
-                      {t.origen} → {t.destino}
-                    </span>
-                    <span className="text-xs text-stone-500">
-                      {numero(Number(t.enviadas))} unidades en {numero(Number(t.renglones))}{' '}
-                      {Number(t.renglones) === 1 ? 'renglón' : 'renglones'}
-                      {t.transportista && ` · ${t.transportista}`}
-                      {t.fecha_envio && ` · salió ${haceCuanto(t.fecha_envio)}`}
-                    </span>
+            {preparadas.map((t) => (
+              <div key={t.id} data-transferencia={t.numero} className="px-4 py-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="font-medium">{t.numero}</span>
+                  <span className="text-sm text-stone-600">
+                    {t.origen} → {t.destino}
+                  </span>
+                  <span className="text-xs text-stone-500">
+                    {numero(Number(t.unidades))} unidades en {numero(Number(t.renglones))}{' '}
+                    {Number(t.renglones) === 1 ? 'renglón' : 'renglones'}
+                    {t.observaciones && ` · ${t.observaciones}`}
+                  </span>
 
-                    <div className="ml-auto flex items-center gap-2">
-                      {t.estado === 'borrador' && (
-                        <>
-                          <BotonDespachar id={Number(t.id)} />
-                          <form action={cancelar}>
-                            <input type="hidden" name="transferencia_id" value={t.id} />
-                            <button
-                              type="submit"
-                              className="rounded-md px-2 py-1 text-xs text-stone-500 hover:bg-stone-100 hover:text-stone-900"
-                            >
-                              Cancelar
-                            </button>
-                          </form>
-                        </>
-                      )}
-                      {t.estado === 'en_transito' && (
-                        <FormRecibir id={Number(t.id)} items={enViaje} />
-                      )}
-                    </div>
+                  <div className="ml-auto flex items-center gap-3">
+                    <BotonTransferir
+                      id={Number(t.id)}
+                      numero={t.numero}
+                      destino={t.destino}
+                      unidades={Number(t.unidades)}
+                    />
+                    <form action={borrar}>
+                      <input type="hidden" name="transferencia_id" value={t.id} />
+                      <button
+                        type="submit"
+                        aria-label={`Borrar ${t.numero}`}
+                        className="text-xs text-stone-400 underline-offset-4 hover:text-red-700 hover:underline"
+                      >
+                        Borrar
+                      </button>
+                    </form>
                   </div>
-
-                  <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
-                    {suyos.map((i) => (
-                      <li key={i.sku}>
-                        {i.producto} × {numero(Number(i.cantidad_enviada))}
-                      </li>
-                    ))}
-                  </ul>
                 </div>
-              )
-            })}
+
+                <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
+                  {itemsDe(Number(t.id)).map((i) => (
+                    <li key={i.sku}>
+                      {i.producto} × {numero(Number(i.cantidad))}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         </section>
       )}
 
       <section className="overflow-hidden rounded-lg border border-stone-200 bg-white">
         <div className="border-b border-stone-100 px-4 py-3">
-          <h2 className="font-medium">Historial</h2>
+          <h2 className="font-medium">Las que ya se hicieron</h2>
         </div>
-        {cerradas.length === 0 ? (
+        {hechas.length === 0 ? (
           <p className="py-8 text-center text-sm text-stone-400">
-            Todavía no hay transferencias cerradas.
+            Todavía no moviste nada entre sedes.
           </p>
         ) : (
           <table className="w-full text-sm">
@@ -233,37 +201,23 @@ export default async function Transferencias({
               <tr className="border-b border-stone-100 text-left text-xs text-stone-500">
                 <th className="px-4 py-2 font-normal">Número</th>
                 <th className="px-2 py-2 font-normal">Recorrido</th>
-                <th className="px-2 py-2 text-right font-normal">Salieron</th>
-                <th className="px-2 py-2 text-right font-normal">Llegaron</th>
+                <th className="px-2 py-2 text-right font-normal">Unidades</th>
                 <th className="px-4 py-2 font-normal">Cuándo</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
-              {cerradas.map((t) => (
-                <tr key={t.id}>
-                  <td className="px-4 py-2 whitespace-nowrap">
-                    {t.numero}
-                    <span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${COLOR_ESTADO[t.estado]}`}>
-                      {TEXTO_ESTADO[t.estado] ?? t.estado}
-                    </span>
-                  </td>
+              {hechas.map((t) => (
+                <tr key={t.id} data-transferencia={t.numero}>
+                  <td className="px-4 py-2 whitespace-nowrap">{t.numero}</td>
                   <td className="px-2 py-2 text-stone-600">
                     {t.origen} → {t.destino}
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums">
-                    {numero(Number(t.enviadas))}
-                  </td>
-                  <td className="px-2 py-2 text-right tabular-nums">
-                    {numero(Number(t.recibidas ?? 0))}
-                    {Number(t.diferencia) > 0 && (
-                      <span className="ml-1 text-xs text-amber-700">
-                        (−{numero(Number(t.diferencia))})
-                      </span>
-                    )}
+                    {numero(Number(t.unidades))}
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap text-stone-500">
-                    {t.fecha_recepcion ? fecha(t.fecha_recepcion.slice(0, 10)) : '—'}
-                    {t.recibio && <span className="ml-2 text-xs text-stone-400">{t.recibio}</span>}
+                    {t.transferida_at ? fecha(t.transferida_at.slice(0, 10)) : '—'}
+                    {t.quien && <span className="ml-2 text-xs text-stone-400">{t.quien}</span>}
                   </td>
                 </tr>
               ))}
