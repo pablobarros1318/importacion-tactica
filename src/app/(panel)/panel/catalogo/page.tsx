@@ -33,10 +33,10 @@ const COLOR_CLASE: Record<string, string> = {
 export default async function Catalogo({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; clase?: string }>
+  searchParams: Promise<{ q?: string; clase?: string; con?: string }>
 }) {
   await requireAdmin()
-  const { q = '', clase = '' } = await searchParams
+  const { q = '', clase = '', con = '' } = await searchParams
 
   const supabase = await createClient()
   const [catalogoRes, pendientesRes] = await Promise.all([
@@ -46,8 +46,12 @@ export default async function Catalogo({
 
   if (catalogoRes.error) console.error('[catalogo]', catalogoRes.error.message)
 
+  // Lo que está en cero se va al fondo, acá y adentro de cada producto: la
+  // lista completa hace falta —de acá se edita y se archiva— pero lo que no hay
+  // no tiene por qué encabezarla.
   const todas = ordenarPor(
     (catalogoRes.data ?? []) as FilaCatalogo[],
+    (f) => (Number(f.stock_total) > 0 ? 0 : 1),
     (f) => f.producto,
     (f) => f.sku,
   )
@@ -61,6 +65,7 @@ export default async function Catalogo({
   const busqueda = q.trim().toLowerCase()
   const filas = todas.filter((f) => {
     if (clase && f.clase !== clase) return false
+    if (con && Number(f.stock_total) <= 0) return false
     if (!busqueda) return true
     return (
       f.sku.toLowerCase().includes(busqueda) ||
@@ -72,10 +77,14 @@ export default async function Catalogo({
   // Agrupamos por producto para que se lea como un catálogo y no como una lista
   const productos = [...new Map(filas.map((f) => [f.producto_id, f])).values()]
 
-  const filtro = (c: string) => {
+  const enCero = todas.filter((f) => Number(f.stock_total) <= 0).length
+
+  const filtro = (cambios: { clase?: string; con?: string }) => {
     const p = new URLSearchParams()
+    const base = { clase, con, ...cambios }
     if (q) p.set('q', q)
-    if (c) p.set('clase', c)
+    if (base.clase) p.set('clase', base.clase)
+    if (base.con) p.set('con', base.con)
     const s = p.toString()
     return `/panel/catalogo${s ? `?${s}` : ''}`
   }
@@ -86,7 +95,9 @@ export default async function Catalogo({
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Catálogo</h1>
           <p className="mt-1 text-sm text-stone-500">
-            {numero(todas.length)} variantes en {numero(new Set(todas.map((f) => f.producto_id)).size)} productos.
+            {numero(todas.length)} variantes en{' '}
+            {numero(new Set(todas.map((f) => f.producto_id)).size)} productos
+            {enCero > 0 && `, ${numero(enCero)} sin stock`}.
           </p>
         </div>
         <Link
@@ -119,6 +130,7 @@ export default async function Catalogo({
           className="min-w-0 flex-1 rounded-md border border-stone-300 px-2.5 py-1.5 text-sm outline-none focus:border-stone-900"
         />
         {clase && <input type="hidden" name="clase" value={clase} />}
+        {con && <input type="hidden" name="con" value={con} />}
         <button type="submit" className="rounded-md bg-stone-900 px-3 py-1.5 text-sm text-white">
           Buscar
         </button>
@@ -131,7 +143,7 @@ export default async function Catalogo({
           ].map((x) => (
             <Link
               key={x.v}
-              href={filtro(x.v)}
+              href={filtro({ clase: x.v })}
               className={[
                 'rounded-md px-2.5 py-1.5 text-sm',
                 clase === x.v ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-100',
@@ -140,6 +152,15 @@ export default async function Catalogo({
               {x.l}
             </Link>
           ))}
+          <Link
+            href={filtro({ con: con ? '' : '1' })}
+            className={[
+              'rounded-md px-2.5 py-1.5 text-sm',
+              con ? 'bg-emerald-700 text-white' : 'text-stone-600 hover:bg-stone-100',
+            ].join(' ')}
+          >
+            Con stock
+          </Link>
         </div>
       </form>
 
@@ -147,7 +168,9 @@ export default async function Catalogo({
         <p className="rounded-lg border border-dashed border-stone-300 bg-white px-6 py-16 text-center text-sm text-stone-400">
           {todas.length === 0
             ? 'Todavía no cargaste ningún producto.'
-            : 'Ningún producto coincide con la búsqueda.'}
+            : con
+              ? 'Ningún producto con stock coincide con la búsqueda.'
+              : 'Ningún producto coincide con la búsqueda.'}
         </p>
       ) : (
         <div className="space-y-4">

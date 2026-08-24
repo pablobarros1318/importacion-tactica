@@ -27,10 +27,10 @@ type FilaDisponibilidad = {
 export default async function Stock({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; clase?: string; bajo?: string }>
+  searchParams: Promise<{ q?: string; clase?: string; bajo?: string; con?: string }>
 }) {
   await requireAdmin()
-  const { q = '', clase = '', bajo = '' } = await searchParams
+  const { q = '', clase = '', bajo = '', con = '' } = await searchParams
   const sede = await getSedeActiva()
 
   if (!sede) {
@@ -116,16 +116,38 @@ export default async function Stock({
   })
 
   const busqueda = q.trim().toLowerCase()
+
+  /**
+   * Si de este SKU hay algo hoy.
+   *
+   * Se cuenta lo físico y también lo que se puede armar: un decant con cero
+   * frascos armados pero cuarenta armables SÍ se puede entregar, y mandarlo al
+   * fondo con los que no existen sería esconder mercadería que está.
+   */
+  const hayAlgo = (f: FilaStock) => f.fisico > 0 || f.vendible > 0
+
   // El orden lo pone acá y no la consulta: alfabéticamente FRA-10ML iría antes
-  // que FRA-5ML, que es justo lo que se quería evitar.
-  const visibles = ordenarPor(filas, (f) => f.producto, (f) => f.sku).filter((f) => {
+  // que FRA-5ML, que es justo lo que se quería evitar. Y ahora lo que no hay se
+  // va al fondo: la lista completa sigue estando —hace falta para contar y para
+  // cargar lo que llegó— pero deja de tapar lo que sí se puede mover hoy.
+  const visibles = ordenarPor(
+    filas,
+    (f) => (hayAlgo(f) ? 0 : 1),
+    // Entre los que hay algo, primero lo que está armado y en la estantería.
+    (f) => (f.fisico > 0 ? 0 : 1),
+    (f) => f.producto,
+    (f) => f.sku,
+  ).filter((f) => {
     if (clase && f.clase !== clase) return false
     if (bajo && !(f.minimo > 0 && f.fisico <= f.minimo)) return false
+    if (con && !hayAlgo(f)) return false
     if (!busqueda) return true
     return (
       f.sku.toLowerCase().includes(busqueda) || f.producto.toLowerCase().includes(busqueda)
     )
   })
+
+  const enCero = filas.filter((f) => !hayAlgo(f)).length
 
   const bajoMinimo = filas.filter((f) => f.minimo > 0 && f.fisico <= f.minimo)
   const sinNada = filas.every((f) => f.fisico === 0)
@@ -152,7 +174,7 @@ export default async function Stock({
 
   const filtro = (cambios: Record<string, string>) => {
     const p = new URLSearchParams()
-    const base: Record<string, string> = { q, clase, bajo, ...cambios }
+    const base: Record<string, string> = { q, clase, bajo, con, ...cambios }
     Object.entries(base).forEach(([k, v]) => v && p.set(k, v))
     const s = p.toString()
     return `/panel/stock${s ? `?${s}` : ''}`
@@ -168,6 +190,17 @@ export default async function Stock({
             stock acá
             {valorizado > 0 && ` · ${pesos(valorizado)} valorizado`}. La sede se
             cambia arriba a la derecha.
+            {enCero > 0 && !con && (
+              <>
+                {' '}
+                {numero(enCero)} en cero{' '}
+                {enCero === 1 ? 'quedó' : 'quedaron'} al final de la lista;{' '}
+                <Link href={filtro({ con: '1' })} className="underline underline-offset-4">
+                  escondelos
+                </Link>
+                .
+              </>
+            )}
           </p>
         </div>
         <FormCarga
@@ -200,6 +233,7 @@ export default async function Stock({
         />
         {clase && <input type="hidden" name="clase" value={clase} />}
         {bajo && <input type="hidden" name="bajo" value={bajo} />}
+        {con && <input type="hidden" name="con" value={con} />}
         <button type="submit" className="rounded-md bg-stone-900 px-3 py-1.5 text-sm text-white">
           Buscar
         </button>
@@ -221,6 +255,18 @@ export default async function Stock({
               {x.l}
             </Link>
           ))}
+          {/* Los dos filtros de stock conviven: prendidos juntos muestran lo
+              que hay pero está por caerse, que es la lista con la que se sale a
+              comprar. */}
+          <Link
+            href={filtro({ con: con ? '' : '1' })}
+            className={[
+              'rounded-md px-2.5 py-1.5 text-sm',
+              con ? 'bg-emerald-700 text-white' : 'text-stone-600 hover:bg-stone-100',
+            ].join(' ')}
+          >
+            Con stock
+          </Link>
           <Link
             href={filtro({ bajo: bajo ? '' : '1' })}
             className={[
@@ -272,6 +318,8 @@ export default async function Stock({
       )}
 
       <p className="text-xs text-stone-500">
+        La lista arranca por lo que hay y termina en lo que está en cero.{' '}
+        <strong>Con stock</strong> directamente esconde esos últimos.{' '}
         <strong>Hay</strong> es lo que está físicamente en {sede.nombre}.{' '}
         <strong>Vendible</strong> suma lo que está armado y libre más lo que se
         podría armar con los insumos que hay. Los insumos no se venden sueltos,
