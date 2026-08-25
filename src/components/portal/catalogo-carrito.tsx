@@ -15,6 +15,7 @@ import {
 } from '@/lib/grupos-precio'
 import {
   bloques,
+  comoElegir,
   fichas,
   type Cesta,
   type Ficha,
@@ -598,7 +599,9 @@ function Tarjeta({
             </button>
           </h3>
           <p className="mt-0.5 text-[11px] uppercase tracking-wider text-tinta-suave/70">
-            {una ? una.sku : `${numero(ficha.variantes.length)} variantes`}
+            {/* "variantes" es palabra nuestra, no del cliente. Del otro lado
+                son opciones: colores, tamaños, lo que sea que las separe. */}
+            {una ? una.sku : `${numero(ficha.variantes.length)} opciones`}
           </p>
         </div>
 
@@ -655,7 +658,7 @@ function Tarjeta({
               onClick={entrar}
               className="w-full rounded-lg border border-tinta bg-tinta px-3 py-2 text-sm font-medium text-crema-hueso transition hover:bg-tinta/90"
             >
-              {puestas > 0 ? 'Ver y ajustar' : 'Elegir colores'}
+              {puestas > 0 ? 'Ver y ajustar' : comoElegir(ficha)}
             </button>
           ) : enCarrito === 0 ? (
             <button

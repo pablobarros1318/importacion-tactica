@@ -11,7 +11,14 @@ import {
   precioPorUnidad,
   textoEquivalencia,
 } from '@/lib/unidades'
-import { bloques, etiquetaCorta, type Cesta, type Ficha, type Producto } from '@/lib/vidriera'
+import {
+  bloques,
+  comoCadaUno,
+  etiquetaCorta,
+  type Cesta,
+  type Ficha,
+  type Producto,
+} from '@/lib/vidriera'
 import { Monograma } from '@/components/marca'
 import { ContadorCantidad } from '@/components/portal/contador-cantidad'
 
@@ -216,7 +223,9 @@ export function FichaProducto({
       {/* ------------------------------------------------- elegir cantidades - */}
       <div className="space-y-5">
         <h3 className="titulo text-lg text-tinta">
-          {ficha.variantes.length > 1 ? 'Elegí cuántos de cada uno' : 'Cuántos llevás'}
+          {ficha.variantes.length > 1
+            ? `Elegí cuántos de ${comoCadaUno(ficha)}`
+            : 'Cuántos llevás'}
         </h3>
 
         {grupos.map((g) => {

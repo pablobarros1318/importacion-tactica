@@ -49,6 +49,9 @@ export type Producto = {
   descripcion_corta: string | null
   nombre_corto: string | null
   categoria: string
+  /** Con qué palabra se distinguen las variantes de este producto: "color de
+   *  tapa", "capacidad". La escribe quien carga el producto. */
+  atributo_variante: string | null
   categoria_id: number | null
   categoria_slug: string
   categoria_orden: number
@@ -101,6 +104,8 @@ export type Ficha = {
   rama: number[]
   /** El camino más largo de sus variantes, para el rastro de migas. */
   ruta: string | null
+  /** Cómo llamar a lo que distingue sus variantes. Null si nadie lo escribió. */
+  atributo: string | null
 }
 
 /**
@@ -135,6 +140,9 @@ export function fichas(variantes: Producto[]): Ficha[] {
       portada,
       hayStock: vs.some((v) => v.hay_stock),
       rama: [...rama],
+      // Todas las variantes de un producto traen el mismo atributo —sale del
+      // producto—, pero se busca el primero no vacío por si alguna llega nula.
+      atributo: vs.map((v) => (v.atributo_variante ?? '').trim()).find(Boolean) ?? null,
       // El rastro más largo de sus variantes: el que más contexto da. Si el
       // producto está en "Decants › Linea Color" y un SKU baja hasta
       // "› Color › 5 ml", el segundo ubica mejor y contiene al primero.
@@ -160,6 +168,25 @@ export function etiquetaCorta(p: Producto, producto: string): string {
   if (!base || !nombre.toLowerCase().startsWith(base.toLowerCase())) return nombre
   const resto = nombre.slice(base.length).replace(/^[\s\-–—·,:]+/, '').trim()
   return resto || nombre
+}
+
+/**
+ * Cómo invitar a entrar a un producto de varias variantes.
+ *
+ * "Elegir colores" estaba bien para los decants y mal para todo lo demás: los
+ * Básicos se distinguen por tamaño y las jeringas por capacidad. La palabra
+ * sale del producto —la escribe quien lo carga— y cuando no está se cae a
+ * "opciones", que no promete nada que no sea cierto.
+ */
+export function comoElegir(f: Ficha): string {
+  const a = (f.atributo ?? '').trim()
+  return a ? `Elegir ${a.toLowerCase()}` : 'Elegir opciones'
+}
+
+/** "cada color de tapa", "cada uno". Para el título de la ficha. */
+export function comoCadaUno(f: Ficha): string {
+  const a = (f.atributo ?? '').trim()
+  return a ? `cada ${a.toLowerCase()}` : 'cada uno'
 }
 
 /** El grupo de precio de una variante, con un valor propio si no trajo ninguno. */
