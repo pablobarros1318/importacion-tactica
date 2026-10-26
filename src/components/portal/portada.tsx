@@ -134,21 +134,55 @@ function Collage({ fotos }: { fotos: string[] }) {
   )
 }
 
+const CAMION =
+  'M3 6h11v10H3zM14 9h4l3 3v4h-7M7.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm10 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z'
+
+/**
+ * La franja de arriba de todo, como el aviso de envío de las tiendas. El envío
+ * es lo que más hay que contar: la mayoría de los clientes no está cerca.
+ */
+export function BarraEnvios() {
+  return (
+    <div className="bg-tinta px-4 py-2 text-center text-xs text-crema-hueso sm:text-sm">
+      <span className="inline-flex items-center gap-2">
+        <svg
+          viewBox="0 0 24 24"
+          width={16}
+          height={16}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-oro"
+          aria-hidden
+        >
+          <path d={CAMION} />
+        </svg>
+        <span>
+          <strong className="font-medium text-oro-claro">Envíos a todo el país</strong>
+          <span className="hidden sm:inline"> · Armá tu pedido y te lo despachamos a donde estés</span>
+        </span>
+      </span>
+    </div>
+  )
+}
+
 const BENEFICIOS = [
+  {
+    titulo: 'Envíos a todo el país',
+    texto: 'Te lo despachamos por correo a donde estés',
+    icono: CAMION,
+  },
   {
     titulo: 'Precio por cantidad',
     texto: 'Cuanto más llevás, menos te sale cada uno',
     icono: 'M7 7h.01M3 11.6V4a1 1 0 0 1 1-1h7.6a1 1 0 0 1 .7.3l8.4 8.4a1 1 0 0 1 0 1.4l-7.6 7.6a1 1 0 0 1-1.4 0l-8.4-8.4a1 1 0 0 1-.3-.7Z',
   },
   {
-    titulo: 'Retiro sin cargo',
-    texto: 'En Banfield o Monte Grande',
-    icono: 'M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21Zm0-9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z',
-  },
-  {
-    titulo: 'Envíos a todo el país',
-    texto: 'Por correo, a donde estés',
-    icono: 'M3 6h11v10H3zM14 9h4l3 3v4h-7M7.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm10 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z',
+    titulo: 'Te atendemos por WhatsApp',
+    texto: 'Consultas, pago y envío, todo por chat',
+    icono: 'M3.5 20.5l1.3-3.9A8.5 8.5 0 1 1 8 19.6l-4.5.9Z',
   },
   {
     titulo: '¿No hay? Se encarga',
@@ -187,37 +221,47 @@ export function Beneficios() {
   )
 }
 
-/** Para quien compra para una marca entera: mejor hablarlo que armar el carrito. */
-export function CompraGrande() {
-  const link = linkWhatsApp(
-    WHATSAPP,
-    'Hola! Quiero consultar por una compra grande.',
-  )
+/**
+ * El botón de WhatsApp que acompaña todo el recorrido, abajo a la derecha.
+ *
+ * Cuando el carrito está abierto, su barra ocupa el pie de la pantalla y
+ * taparía el botón de pedir: ahí el botón sube. Se resuelve con `:has()` en
+ * CSS para no tener que pasarle el estado del carrito desde otra rama.
+ */
+export function WhatsAppFlotante() {
+  const link = linkWhatsApp(WHATSAPP, 'Hola! Tengo una consulta.')
   if (!link) return null
 
   return (
-    <section className="flex flex-col items-center gap-4 rounded-3xl border border-oro-claro bg-oro-palido/50 px-6 py-10 text-center sm:flex-row sm:justify-between sm:px-10 sm:text-left">
-      <div>
-        <h2 className="titulo text-2xl text-tinta sm:text-3xl">¿Tenés una compra grande?</h2>
-        <p className="mt-1 text-sm text-tinta-suave">
-          Si estás armando el stock de tu marca, escribinos y lo vemos juntos.
-        </p>
-      </div>
-      <a
-        href={link}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="shrink-0 rounded-full bg-tinta px-6 py-3 text-sm font-medium text-crema-hueso transition hover:bg-tinta/90"
+    <a
+      href={link}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Escribinos por WhatsApp"
+      title="Escribinos por WhatsApp"
+      className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#25d366] text-white shadow-[0_8px_24px_rgba(0,0,0,0.25)] transition hover:scale-105 [body:has([data-carrito])_&]:bottom-28"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        width={28}
+        height={28}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
       >
-        Escribinos por WhatsApp
-      </a>
-    </section>
+        <path d="M3.5 20.5l1.3-3.9A8.5 8.5 0 1 1 8 19.6l-4.5.9Z" />
+        <path d="M9 8.5c0 3.6 2.9 6.5 6.5 6.5l1-1.6-2-1-1 .8a4.2 4.2 0 0 1-2.2-2.2l.8-1-1-2L9 8.5Z" />
+      </svg>
+    </a>
   )
 }
 
 const PASOS = [
   'Armá el carrito con lo que necesitás',
-  'Confirmás el pedido, todavía sin pagar',
+  'Confirmás el pedido desde la web',
   'Te escribimos para coordinar pago y entrega',
 ]
 
@@ -254,11 +298,11 @@ export function PieTienda({ children }: { children?: React.ReactNode }) {
 
         <div>
           <h2 className="text-[11px] font-medium uppercase tracking-[0.18em] text-oro-claro">
-            Retiro y envíos
+            Envíos
           </h2>
           <ul className="mt-3 space-y-2 text-sm">
-            <li>Retiro en Banfield o Monte Grande</li>
-            <li>Envíos a todo el país</li>
+            <li>Enviamos a todo el país</li>
+            <li>Coordinamos el despacho por WhatsApp</li>
             {whatsapp && (
               <li>
                 <a

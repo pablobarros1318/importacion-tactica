@@ -10,7 +10,6 @@ import { normalizarCategorias } from '@/lib/categorias'
 import {
   Banner,
   Beneficios,
-  CompraGrande,
   fotosDePortada,
 } from '@/components/portal/portada'
 
@@ -65,8 +64,6 @@ export default async function PortalCatalogo() {
           direccionGuardada={misDatos.data?.direccion ?? null}
         />
       )}
-
-      <CompraGrande />
     </div>
   )
 }

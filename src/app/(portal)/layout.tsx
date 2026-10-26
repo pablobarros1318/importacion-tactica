@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { requireCliente } from '@/lib/auth'
 import { salir } from '@/app/(auth)/actions'
 import { Monograma, Wordmark } from '@/components/marca'
-import { PieTienda } from '@/components/portal/portada'
+import { BarraEnvios, PieTienda, WhatsAppFlotante } from '@/components/portal/portada'
 
 // En el celular los rótulos van cortos: con "Mis pedidos" y "Mis datos"
 // completos, la barra se parte en dos renglones y el encabezado queda torcido.
@@ -21,6 +21,7 @@ export default async function PortalLayout({
 
   return (
     <div className="marca min-h-dvh">
+      <BarraEnvios />
       <header className="sticky top-0 z-30 border-b border-arena bg-crema/90 backdrop-blur">
         <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-10">
           <Link href="/portal" className="flex items-center gap-2.5">
@@ -57,6 +58,8 @@ export default async function PortalLayout({
       </header>
 
       <main className="px-4 py-8 sm:px-6 sm:py-10 lg:px-10">{children}</main>
+
+      <WhatsAppFlotante />
 
       <PieTienda>
         <span>Hola, {perfil.nombre}. Cualquier duda, escribinos y te respondemos.</span>

@@ -100,7 +100,7 @@ export function CatalogoCarrito({
   const [crudos, setCrudos] = useState<Record<string, string>>({})
   const router = useRouter()
   const [estado, accion, pendiente] = useActionState(hacerPedido, inicial)
-  const [entrega, setEntrega] = useState<'retiro' | 'envio'>('retiro')
+  const [entrega, setEntrega] = useState<'retiro' | 'envio'>('envio')
   const [abierto, setAbierto] = useState(false)
   // La categoría elegida. `null` es "todo". Guardamos la hoja: el camino hasta
   // ella se reconstruye solo.
@@ -430,7 +430,7 @@ export function CatalogoCarrito({
 
       {/* ---------------------------------------------------------- carrito - */}
       {lineas.length > 0 && (
-        <section className="sticky bottom-3 z-20 rounded-xl border border-oro-claro bg-crema-hueso px-4 py-4 shadow-[0_8px_30px_rgba(35,38,44,0.14)]">
+        <section data-carrito className="sticky bottom-3 z-20 rounded-xl border border-oro-claro bg-crema-hueso px-4 py-4 shadow-[0_8px_30px_rgba(35,38,44,0.14)]">
           <div className="flex flex-wrap items-center gap-3">
             <div className="min-w-0 flex-1">
               <p className="titulo text-lg text-tinta">
@@ -502,8 +502,10 @@ export function CatalogoCarrito({
                     onChange={(e) => setEntrega(e.target.value as 'retiro' | 'envio')}
                     className="w-full rounded-lg border border-arena bg-white px-3 py-2 text-sm outline-none focus:border-oro"
                   >
+                    {/* El envío va primero y elegido: es lo que usa casi todo
+                        el mundo. El retiro sigue estando para quien lo pida. */}
+                    <option value="envio">Envío a domicilio</option>
                     <option value="retiro">Lo paso a buscar</option>
-                    <option value="envio">Envío por correo</option>
                   </select>
                 </label>
 

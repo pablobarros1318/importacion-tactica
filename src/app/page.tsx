@@ -14,7 +14,8 @@ import { Monograma, Wordmark } from '@/components/marca'
 import {
   Banner,
   Beneficios,
-  CompraGrande,
+  BarraEnvios,
+  WhatsAppFlotante,
   PieTienda,
   fotosDePortada,
 } from '@/components/portal/portada'
@@ -23,7 +24,7 @@ export const metadata: Metadata = {
   title: 'Importación Táctica — Envases, decants e insumos',
   description:
     'Frascos atomizadores, decants y accesorios para tu marca. Precios por cantidad, ' +
-    'retiro por Banfield o Monte Grande y envíos a todo el país.',
+    'envíos a todo el país.',
   openGraph: {
     title: 'Importación Táctica',
     description: 'Tu marca empieza por un buen envase.',
@@ -68,6 +69,7 @@ export default async function Portada() {
 
   return (
     <div className="marca min-h-dvh">
+      <BarraEnvios />
       <header className="sticky top-0 z-30 border-b border-arena bg-crema/90 backdrop-blur">
         <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-10">
           <Link href="/" className="flex items-center gap-2.5">
@@ -118,10 +120,10 @@ export default async function Portada() {
               publico
             />
           )}
-
-          <CompraGrande />
         </div>
       </main>
+
+      <WhatsAppFlotante />
 
       <PieTienda>
         <span>
