@@ -10,7 +10,14 @@ import {
 } from '@/components/portal/catalogo-carrito'
 import { ordenarPor } from '@/lib/orden'
 import { normalizarCategorias } from '@/lib/categorias'
-import { Monograma, Wordmark, Filete, Destello } from '@/components/marca'
+import { Monograma, Wordmark } from '@/components/marca'
+import {
+  Banner,
+  Beneficios,
+  CompraGrande,
+  PieTienda,
+  fotosDePortada,
+} from '@/components/portal/portada'
 
 export const metadata: Metadata = {
   title: 'Importación Táctica — Envases, decants e insumos',
@@ -91,20 +98,14 @@ export default async function Portada() {
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
-        <div className="space-y-8">
-          <header className="text-center">
-            <p className="text-xs uppercase tracking-[0.2em] text-oro-oscuro">
-              Hacemos que tu marca brille
-            </p>
-            <h1 className="titulo mt-3 text-3xl text-tinta sm:text-5xl">
-              Tu marca empieza por un buen envase
-            </h1>
-            <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-tinta-suave sm:text-base">
-              Frascos, decants e insumos para trabajar prolijo. Los precios bajan por
-              cantidad: cuanto más llevás, menos te sale cada uno.
-            </p>
-            <Filete className="mx-auto mt-6 max-w-xs" />
-          </header>
+        <div className="space-y-10">
+          <Banner
+            fotos={fotosDePortada(productos)}
+            titulo="Tu marca empieza por un buen envase"
+            bajada="Frascos, decants e insumos para trabajar prolijo. Los precios bajan por cantidad: cuanto más llevás, menos te sale cada uno."
+            secundario={{ href: '/registro', texto: 'Crear cuenta' }}
+          />
+          <Beneficios />
 
           {productos.length === 0 ? (
             <p className="rounded-lg border border-dashed border-arena px-6 py-16 text-center text-sm text-tinta-suave">
@@ -117,23 +118,19 @@ export default async function Portada() {
               publico
             />
           )}
+
+          <CompraGrande />
         </div>
       </main>
 
-      <footer className="mt-8 border-t border-arena">
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 py-10 text-center sm:px-6">
-          <Destello size={10} className="text-oro" />
-          <p className="text-sm text-tinta-suave">
-            Banfield · Monte Grande — envíos a todo el país
-          </p>
-          <p className="text-xs text-tinta-suave/70">
-            ¿Ya tenés cuenta?{' '}
-            <Link href="/login" className="underline decoration-oro underline-offset-4">
-              Entrá para pedir
-            </Link>
-          </p>
-        </div>
-      </footer>
+      <PieTienda>
+        <span>
+          ¿Ya tenés cuenta?{' '}
+          <Link href="/login" className="underline decoration-oro underline-offset-4 hover:text-crema-hueso">
+            Entrá para pedir
+          </Link>
+        </span>
+      </PieTienda>
     </div>
   )
 }

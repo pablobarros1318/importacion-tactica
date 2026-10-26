@@ -16,6 +16,7 @@ import {
 import {
   bloques,
   comoElegir,
+  etiquetaCorta,
   fichas,
   type Cesta,
   type Ficha,
@@ -31,6 +32,7 @@ import {
 } from '@/lib/unidades'
 import { Destello, Monograma } from '@/components/marca'
 import { FiltrosCatalogo } from '@/components/portal/filtros-catalogo'
+import { MosaicoRubros } from '@/components/portal/mosaico-rubros'
 import { FichaProducto } from '@/components/portal/ficha-producto'
 import { ContadorCantidad } from '@/components/portal/contador-cantidad'
 
@@ -41,6 +43,23 @@ export type { Producto, Categoria, Escala, Presentacion } from '@/lib/vidriera'
 import type { Producto, Categoria } from '@/lib/vidriera'
 
 const inicial: EstadoPortal = {}
+
+type Orden = 'destacados' | 'precio-asc' | 'precio-desc' | 'nombre'
+
+/**
+ * Lo que sale pedir el mínimo de cada variante. La tarjeta muestra ese número
+ * —no el del escalón más barato— porque es el que alguien va a pagar si entra
+ * y pide lo menos posible: anunciar el de 200 unidades sería un precio que casi
+ * nadie consigue, y enterarse adentro es peor que no verlo. Ordenar por precio
+ * usa el mismo, para que el orden coincida con lo que se lee.
+ */
+function arranques(ficha: Ficha, minimoDe: (p: Producto) => number): number[] {
+  return ficha.variantes.map((x) =>
+    (x.presentaciones ?? []).length > 0
+      ? Number((x.presentaciones ?? [])[0]?.precio ?? 0)
+      : precioSegunGrupo(x, minimoDe(x)),
+  )
+}
 
 /**
  * La vidriera y el carrito.
@@ -91,6 +110,7 @@ export function CatalogoCarrito({
   const [filtros, setFiltros] = useState(false)
   /** El producto que se está mirando por dentro, o null si estamos en la grilla. */
   const [mirando, setMirando] = useState<number | null>(null)
+  const [orden, setOrden] = useState<Orden>('destacados')
 
   // Al volver de crear la cuenta, el carrito que se armó en la vidriera
   // abierta está esperando en el navegador. Se carga una sola vez y se borra.
@@ -277,24 +297,49 @@ export function CatalogoCarrito({
     )
   }, [productos, rubro, texto, soloStock])
 
+  // El orden elegido se aplica arriba del de siempre: lo que no hay sigue yendo
+  // al final, ordenado por precio entre sí.
+  const ordenadas =
+    orden === 'destacados'
+      ? visibles
+      : [...visibles].sort(
+          (a, b) =>
+            Number(b.hayStock) - Number(a.hayStock) ||
+            (orden === 'nombre'
+              ? a.nombre.localeCompare(b.nombre, 'es')
+              : (Math.min(...arranques(a, minimoDe)) - Math.min(...arranques(b, minimoDe))) *
+                (orden === 'precio-desc' ? -1 : 1)),
+        )
+
+  const todas = useMemo(() => fichas(productos), [productos])
+
   const ficha = useMemo(
-    () => (mirando == null ? null : fichas(productos).find((f) => f.id === mirando) ?? null),
-    [mirando, productos],
+    () => (mirando == null ? null : todas.find((f) => f.id === mirando) ?? null),
+    [mirando, todas],
   )
 
+  const titulo = rubro === null ? 'Todos los productos' : (categorias.find((c) => c.id === rubro)?.nombre ?? 'Productos')
+
+  // Al elegir desde los mosaicos, la grilla queda abajo: se baja hasta ella
+  // para que se vea que algo cambió.
+  const irAProductos = () =>
+    requestAnimationFrame(() =>
+      document.getElementById('grilla')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    )
+
   return (
-    <div className="space-y-6">
-      {/* En el celular no hay costado: la columna se pliega detrás del botón y,
-          cuando se abre, se acuesta arriba de la grilla en vez de pelearle el
-          ancho. */}
-      <button
-        type="button"
-        onClick={() => setFiltros((x) => !x)}
-        aria-expanded={filtros}
-        className="rounded-full border border-arena bg-crema-hueso px-4 py-1.5 text-sm text-tinta-suave lg:hidden"
-      >
-        {filtros ? 'Ocultar filtros' : 'Filtros'}
-      </button>
+    <div id="productos" className="scroll-mt-20 space-y-8">
+      {!ficha && (
+        <MosaicoRubros
+          categorias={categorias}
+          fichas={todas}
+          rubro={rubro}
+          elegir={(v) => {
+            setRubro(v)
+            setMirando(null)
+          }}
+        />
+      )}
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         <FiltrosCatalogo
@@ -311,31 +356,74 @@ export function CatalogoCarrito({
           }}
           soloStock={soloStock}
           setSoloStock={setSoloStock}
-          total={fichas(productos).length}
+          total={todas.length}
           abierto={filtros}
-          cerrar={() => setFiltros(false)}
+          cerrar={() => {
+            // Sólo en el celular, donde los filtros tapan la grilla: en la
+            // columna del costado la grilla ya está a la vista.
+            if (filtros) irAProductos()
+            setFiltros(false)
+          }}
         />
 
-        <div className="min-w-0 flex-1">
+        <div id="grilla" className="min-w-0 flex-1 scroll-mt-20">
           {ficha ? (
             <FichaProducto ficha={ficha} cesta={cesta} volver={() => setMirando(null)} />
-          ) : visibles.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-arena px-6 py-16 text-center text-sm text-tinta-suave">
-              {texto
-                ? `No encontramos nada con "${busqueda.trim()}".`
-                : 'Todavía no hay nada publicado en este rubro.'}
-            </p>
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3">
-              {visibles.map((f) => (
-                <Tarjeta
-                  key={f.id}
-                  ficha={f}
-                  cesta={cesta}
-                  entrar={() => setMirando(f.id)}
-                />
-              ))}
-            </div>
+            <>
+              {/* La barra de la grilla: qué se está mirando, cuánto hay y en
+                  qué orden. En el celular trae también el botón de filtros,
+                  que se pliega detrás porque no hay costado. */}
+              <div className="mb-5 flex flex-wrap items-end gap-3 border-b border-arena pb-3">
+                <div className="mr-auto">
+                  <h2 className="titulo text-2xl text-tinta">{titulo}</h2>
+                  <p className="text-xs text-tinta-suave">
+                    {numero(ordenadas.length)} {ordenadas.length === 1 ? 'producto' : 'productos'}
+                    {texto && ` con "${busqueda.trim()}"`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFiltros((x) => !x)}
+                  aria-expanded={filtros}
+                  className="rounded-full border border-arena bg-crema-hueso px-4 py-1.5 text-sm text-tinta-suave lg:hidden"
+                >
+                  {filtros ? 'Ocultar filtros' : 'Buscar y filtrar'}
+                </button>
+                <label className="flex items-center gap-2 text-sm text-tinta-suave">
+                  <span className="hidden sm:inline">Ordenar</span>
+                  <select
+                    value={orden}
+                    onChange={(e) => setOrden(e.target.value as Orden)}
+                    className="rounded-full border border-arena bg-crema-hueso px-3 py-1.5 text-sm text-tinta outline-none focus:border-oro"
+                  >
+                    <option value="destacados">Destacados</option>
+                    <option value="precio-asc">Menor precio</option>
+                    <option value="precio-desc">Mayor precio</option>
+                    <option value="nombre">A — Z</option>
+                  </select>
+                </label>
+              </div>
+
+              {ordenadas.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-arena px-6 py-16 text-center text-sm text-tinta-suave">
+                  {texto
+                    ? `No encontramos nada con "${busqueda.trim()}".`
+                    : 'Todavía no hay nada publicado en este rubro.'}
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:gap-x-5 sm:gap-y-8 lg:grid-cols-3">
+                  {ordenadas.map((f) => (
+                    <Tarjeta
+                      key={f.id}
+                      ficha={f}
+                      cesta={cesta}
+                      entrar={() => setMirando(f.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -487,8 +575,9 @@ export function CatalogoCarrito({
  *
  * Con una sola variante resuelve ahí mismo: entrar a una ficha para elegir
  * entre una opción sería un paso de más. Con varias es una puerta, y muestra lo
- * que hace falta para decidir si abrirla: desde cuánto sale y cuántos colores
- * hay.
+ * que hace falta para decidir si abrirla: desde cuánto sale, cuánto baja por
+ * cantidad y qué opciones hay —con sus fotitos, como las muestras de color de
+ * cualquier tienda—.
  */
 function Tarjeta({
   ficha,
@@ -502,6 +591,13 @@ function Tarjeta({
   const una = ficha.variantes.length === 1 ? ficha.variantes[0] : null
   const p = una ?? ficha.portada
   const foto = urlDeFoto(p.foto)
+  // La segunda foto aparece al pasar el mouse: otra del mismo SKU si la hay, y
+  // si no la de otra variante. Es lo que hace que la grilla se sienta viva.
+  const otra =
+    [
+      ...(p.fotos ?? []).map(urlDeFoto),
+      ...ficha.variantes.filter((x) => x.sku !== p.sku).map((x) => urlDeFoto(x.foto)),
+    ].find((u) => u && u !== foto) ?? null
   const enPaquetes = (p.presentaciones ?? []).length > 0
   const pres = cesta.presentacionDe(p)
   const minimo = cesta.minimoDe(p)
@@ -515,30 +611,39 @@ function Tarjeta({
     0,
   )
 
-  // Lo que sale pedir el mínimo de cada variante. La tarjeta muestra ese
-  // número —no el del escalón más barato— porque es el que alguien va a pagar
-  // si entra y pide lo menos posible: anunciar el de 200 unidades sería un
-  // precio que casi nadie consigue, y enterarse adentro es peor que no verlo.
-  const arranques = ficha.variantes.map((x) =>
-    (x.presentaciones ?? []).length > 0
-      ? Number((x.presentaciones ?? [])[0]?.precio ?? 0)
-      : precioSegunGrupo(x, cesta.minimoDe(x)),
-  )
-  const barato = Math.min(...arranques)
-  const caro = Math.max(...arranques)
+  const precios = arranques(ficha, cesta.minimoDe)
+  const barato = Math.min(...precios)
+  const caro = Math.max(...precios)
 
   const unidad: Unidad = p.unidad
   const cerca = una && !enPaquetes ? proximoEscalon(una, cesta.delGrupo(una)) : null
-  const cuantosGrupos = bloques(ficha).length
 
-  // El mejor escalón que ofrece el producto. En una tarjeta que ya no muestra
-  // casilleros, es lo único que dice por qué conviene entrar: sin esto la
-  // grilla sería una lista de precios de a uno y el descuento por cantidad
-  // —que es de lo que vive el negocio— quedaría escondido dos clicks adentro.
-  const mejor = ficha.variantes
+  // El mejor escalón que ofrece el producto. Es lo único que dice por qué
+  // conviene entrar: sin esto la grilla sería una lista de precios de a uno y
+  // el descuento por cantidad —que es de lo que vive el negocio— quedaría
+  // escondido dos clicks adentro. Se compara contra el precio de arranque, que
+  // Se mide variante por variante contra su propio arranque: comparar el
+  // escalón de la más barata con el arranque de la más cara inventaría un
+  // ahorro que nadie consigue. Lo que va en paquetes queda afuera, porque su
+  // precio es por paquete y sus escalones —si los tiene— por unidad.
+  const sueltas = ficha.variantes.filter((x) => (x.presentaciones ?? []).length === 0)
+  const mejor = sueltas
     .flatMap((x) => x.escalas ?? [])
     .filter((e) => Number(e.precio) < caro)
     .sort((a, b) => Number(a.precio) - Number(b.precio))[0]
+  const ahorro = Math.max(
+    0,
+    ...sueltas.map((x) => {
+      const desde = precioSegunGrupo(x, cesta.minimoDe(x))
+      const tope = Math.min(...(x.escalas ?? []).map((e) => Number(e.precio)))
+      return desde > 0 && Number.isFinite(tope) ? Math.round((1 - tope / desde) * 100) : 0
+    }),
+  )
+
+  // Las muestras de las opciones, como los circulitos de color de las tiendas.
+  const muestras = una ? [] : ficha.variantes.slice(0, 5)
+  const sobran = ficha.variantes.length - muestras.length
+  const opciones = (ficha.atributo ?? '').trim().toLowerCase() || 'opciones'
 
   return (
     <article
@@ -547,41 +652,59 @@ function Tarjeta({
       // busca "Linea Color", no "DEC-5-PLA"— pero desde afuera sigue siendo la
       // única forma de decir "esta tarjeta y no otra".
       data-skus={ficha.variantes.map((x) => x.sku).join(' ')}
-      className={[
-        'group flex flex-col overflow-hidden rounded-xl border bg-crema-hueso transition',
-        puestas > 0 ? 'border-oro shadow-sm' : 'border-arena hover:border-oro-claro',
-        ficha.hayStock ? '' : 'opacity-75',
-      ].join(' ')}
+      className="group flex flex-col"
     >
       <button
         type="button"
         onClick={entrar}
         aria-label={`Ver ${ficha.nombre}`}
-        className="relative block aspect-square overflow-hidden bg-crema-suave text-left"
+        className={[
+          'relative block aspect-square overflow-hidden rounded-2xl bg-crema-hueso text-left transition',
+          puestas > 0
+            ? 'ring-2 ring-oro'
+            : 'ring-1 ring-arena group-hover:shadow-[0_12px_30px_rgba(35,38,44,0.12)]',
+        ].join(' ')}
       >
         {foto ? (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={foto}
-            alt={ficha.nombre}
-            loading="lazy"
-            className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
-          />
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={foto}
+              alt={ficha.nombre}
+              loading="lazy"
+              className={[
+                'h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]',
+                otra ? 'group-hover:opacity-0' : '',
+                ficha.hayStock ? '' : 'grayscale-[40%]',
+              ].join(' ')}
+            />
+            {otra && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={otra}
+                alt=""
+                loading="lazy"
+                className="absolute inset-0 h-full w-full object-cover opacity-0 transition duration-500 group-hover:scale-[1.04] group-hover:opacity-100"
+              />
+            )}
+          </>
         ) : (
-          <div className="flex h-full w-full items-center justify-center">
+          <div className="flex h-full w-full items-center justify-center bg-crema-suave">
             <Monograma size={56} className="opacity-25" />
           </div>
         )}
 
-        <span
-          className={[
-            'absolute left-2 top-2 rounded-full px-2.5 py-0.5 text-[11px] font-medium backdrop-blur',
-            ficha.hayStock
-              ? 'bg-crema-hueso/85 text-oro-oscuro'
-              : 'bg-tinta/70 text-crema-hueso',
-          ].join(' ')}
-        >
-          {ficha.hayStock ? 'hay stock' : 'sin stock'}
+        <span className="absolute left-2 top-2 flex flex-col items-start gap-1">
+          {!ficha.hayStock && (
+            <span className="rounded-full bg-tinta/80 px-2.5 py-0.5 text-[11px] font-medium text-crema-hueso backdrop-blur">
+              Se encarga
+            </span>
+          )}
+          {ahorro >= 5 && (
+            <span className="rounded-full bg-oro px-2.5 py-0.5 text-[11px] font-semibold text-tinta">
+              hasta −{ahorro}%
+            </span>
+          )}
         </span>
 
         {puestas > 0 && (
@@ -589,21 +712,66 @@ function Tarjeta({
             {enPaquetes ? `×${numero(puestas)}` : enUnidad(puestas, unidad)}
           </span>
         )}
+
+        {/* Lo que se ve al pasar el mouse en las tiendas: la invitación a
+            entrar, sobre la foto. En el celular no hay hover y la foto entera
+            ya es el botón. */}
+        {!una && (
+          <span className="absolute inset-x-2 bottom-2 hidden translate-y-2 rounded-full bg-crema-hueso/95 py-2 text-center text-xs font-medium text-tinta opacity-0 shadow transition group-hover:translate-y-0 group-hover:opacity-100 sm:block">
+            Ver {numero(ficha.variantes.length)} {opciones}
+          </span>
+        )}
       </button>
 
-      <div className="flex flex-1 flex-col gap-2 p-3 sm:p-4">
+      <div className="flex flex-1 flex-col gap-2 px-1 pt-3">
         <div>
-          <h3 className="titulo text-[15px] leading-snug text-tinta sm:text-base">
-            <button type="button" onClick={entrar} className="text-left hover:underline hover:decoration-oro hover:underline-offset-4">
+          <p className="truncate text-[10px] uppercase tracking-[0.16em] text-tinta-suave/70">
+            {p.categoria}
+          </p>
+          <h3 className="titulo mt-0.5 text-[15px] leading-snug text-tinta sm:text-base">
+            <button
+              type="button"
+              onClick={entrar}
+              className="text-left hover:underline hover:decoration-oro hover:underline-offset-4"
+            >
               {una ? (una.nombre_corto ?? ficha.nombre) : ficha.nombre}
             </button>
           </h3>
-          <p className="mt-0.5 text-[11px] uppercase tracking-wider text-tinta-suave/70">
-            {/* "variantes" es palabra nuestra, no del cliente. Del otro lado
-                son opciones: colores, tamaños, lo que sea que las separe. */}
-            {una ? una.sku : `${numero(ficha.variantes.length)} opciones`}
-          </p>
         </div>
+
+        {muestras.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {muestras.map((x) => {
+              const mini = urlDeFoto(x.foto)
+              const corta = etiquetaCorta(x, ficha.nombre)
+              return mini ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  key={x.sku}
+                  src={mini}
+                  alt=""
+                  title={corta}
+                  loading="lazy"
+                  className={[
+                    'h-6 w-6 rounded-full border border-arena object-cover',
+                    x.hay_stock ? '' : 'opacity-50',
+                  ].join(' ')}
+                />
+              ) : (
+                <span
+                  key={x.sku}
+                  title={corta}
+                  className="max-w-24 truncate rounded-full border border-arena px-2 py-0.5 text-[10px] text-tinta-suave"
+                >
+                  {corta}
+                </span>
+              )
+            })}
+            {sobran > 0 && (
+              <span className="text-[11px] text-tinta-suave">+{numero(sobran)}</span>
+            )}
+          </div>
+        )}
 
         <div>
           <p className="text-lg font-semibold tabular-nums text-tinta">
@@ -634,18 +802,17 @@ function Tarjeta({
               desde {cantidadLarga(minimo, unidad)}
             </p>
           )}
-          {!una && (
-            <p className="text-[11px] text-tinta-suave">
-              {mejor && `hasta ${precioPorUnidad(mejor.precio, unidad)} desde ${numero(mejor.desde)} · `}
-              {cuantosGrupos > 1
-                ? 'se suman por subcategoría'
-                : 'las cantidades se suman entre variantes'}
+          {mejor && !cerca && (
+            <p className="mt-0.5 text-[11px] text-oro-oscuro">
+              {precioPorUnidad(mejor.precio, unidad)} llevando{' '}
+              {esGranel(unidad) ? enUnidad(Number(mejor.desde), unidad) : numero(mejor.desde)} o más
+              {!una && bloques(ficha).length > 1 && ' (por subcategoría)'}
             </p>
           )}
         </div>
 
         {cerca && una && (
-          <p className="rounded border border-oro-claro bg-oro-palido/50 px-1.5 py-1 text-[10px] leading-snug text-oro-oscuro">
+          <p className="rounded-lg border border-oro-claro bg-oro-palido/50 px-2 py-1 text-[11px] leading-snug text-oro-oscuro">
             Con {enUnidad(cerca.faltan, unidad)} más te queda a{' '}
             {precioPorUnidad(cerca.precio, unidad)}
           </p>
@@ -656,7 +823,7 @@ function Tarjeta({
             <button
               type="button"
               onClick={entrar}
-              className="w-full rounded-lg border border-tinta bg-tinta px-3 py-2 text-sm font-medium text-crema-hueso transition hover:bg-tinta/90"
+              className="w-full rounded-full border border-tinta px-3 py-2 text-sm font-medium text-tinta transition hover:bg-tinta hover:text-crema-hueso"
             >
               {puestas > 0 ? 'Ver y ajustar' : comoElegir(ficha)}
             </button>
@@ -664,7 +831,7 @@ function Tarjeta({
             <button
               type="button"
               onClick={() => cesta.poner(p.sku, enPaquetes ? 1 : minimo, pres?.id ?? null)}
-              className="w-full rounded-lg border border-tinta bg-tinta px-3 py-2 text-sm font-medium text-crema-hueso transition hover:bg-tinta/90"
+              className="w-full rounded-full bg-tinta px-3 py-2 text-sm font-medium text-crema-hueso transition hover:bg-tinta/90"
             >
               {/* Sin stock igual se puede pedir: queda como pedido pendiente y
                   se entrega cuando llega o se arma. Pero decirle "Agregar"

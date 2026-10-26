@@ -7,7 +7,12 @@ import {
 } from '@/components/portal/catalogo-carrito'
 import { ordenarPor } from '@/lib/orden'
 import { normalizarCategorias } from '@/lib/categorias'
-import { Filete } from '@/components/marca'
+import {
+  Banner,
+  Beneficios,
+  CompraGrande,
+  fotosDePortada,
+} from '@/components/portal/portada'
 
 export const metadata = { title: 'Catálogo · Importación Táctica' }
 
@@ -40,15 +45,14 @@ export default async function PortalCatalogo() {
   )
 
   return (
-    <div className="space-y-8">
-      <header className="text-center">
-        <h1 className="titulo text-3xl text-tinta sm:text-4xl">Catálogo</h1>
-        <p className="mx-auto mt-2 max-w-md text-sm text-tinta-suave">
-          Envases, decants e insumos. Los precios bajan por cantidad: cuanto más
-          llevás, menos te sale cada uno.
-        </p>
-        <Filete className="mx-auto mt-5 max-w-xs" />
-      </header>
+    <div className="space-y-10">
+      <Banner
+        fotos={fotosDePortada(productos)}
+        titulo="Todo para tu marca, en un solo pedido"
+        bajada="Envases, decants e insumos. Los precios bajan por cantidad: cuanto más llevás, menos te sale cada uno."
+        secundario={{ href: '/portal/mis-pedidos', texto: 'Mis pedidos' }}
+      />
+      <Beneficios />
 
       {productos.length === 0 ? (
         <p className="rounded-lg border border-dashed border-arena px-6 py-16 text-center text-sm text-tinta-suave">
@@ -61,6 +65,8 @@ export default async function PortalCatalogo() {
           direccionGuardada={misDatos.data?.direccion ?? null}
         />
       )}
+
+      <CompraGrande />
     </div>
   )
 }

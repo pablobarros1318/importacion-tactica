@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { requireCliente } from '@/lib/auth'
 import { salir } from '@/app/(auth)/actions'
-import { Monograma, Wordmark, Destello } from '@/components/marca'
+import { Monograma, Wordmark } from '@/components/marca'
+import { PieTienda } from '@/components/portal/portada'
 
 // En el celular los rótulos van cortos: con "Mis pedidos" y "Mis datos"
 // completos, la barra se parte en dos renglones y el encabezado queda torcido.
@@ -57,17 +58,9 @@ export default async function PortalLayout({
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">{children}</main>
 
-      <footer className="mt-8 border-t border-arena">
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 py-8 text-center sm:px-6">
-          <Destello size={10} className="text-oro" />
-          <p className="text-sm text-tinta-suave">
-            Envíos a todo el país
-          </p>
-          <p className="text-xs text-tinta-suave/70">
-            Hola, {perfil.nombre}. Cualquier duda, escribinos y te respondemos.
-          </p>
-        </div>
-      </footer>
+      <PieTienda>
+        <span>Hola, {perfil.nombre}. Cualquier duda, escribinos y te respondemos.</span>
+      </PieTienda>
     </div>
   )
 }
