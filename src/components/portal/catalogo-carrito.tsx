@@ -562,7 +562,6 @@ export function CatalogoCarrito({
               <p className="flex items-center gap-1.5 text-xs text-tinta-suave">
                 <Destello size={9} className="text-oro" />
                 Te va a llegar un mensaje nuestro para coordinar el pago y la entrega.
-                Todavía no se cobra nada.
               </p>
             </form>
           )}
