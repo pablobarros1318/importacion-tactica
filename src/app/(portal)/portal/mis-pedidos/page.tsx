@@ -63,7 +63,7 @@ export default async function MisPedidos({
   const items = (itemsRes.data ?? []) as Item[]
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Mis pedidos</h1>

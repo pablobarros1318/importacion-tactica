@@ -22,7 +22,7 @@ export default async function PortalLayout({
   return (
     <div className="marca min-h-dvh">
       <header className="sticky top-0 z-30 border-b border-arena bg-crema/90 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
+        <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-10">
           <Link href="/portal" className="flex items-center gap-2.5">
             <Monograma size={38} />
             <span className="hidden flex-col leading-none sm:flex">
@@ -56,7 +56,7 @@ export default async function PortalLayout({
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">{children}</main>
+      <main className="px-4 py-8 sm:px-6 sm:py-10 lg:px-10">{children}</main>
 
       <PieTienda>
         <span>Hola, {perfil.nombre}. Cualquier duda, escribinos y te respondemos.</span>

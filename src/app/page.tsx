@@ -69,7 +69,7 @@ export default async function Portada() {
   return (
     <div className="marca min-h-dvh">
       <header className="sticky top-0 z-30 border-b border-arena bg-crema/90 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
+        <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-10">
           <Link href="/" className="flex items-center gap-2.5">
             <Monograma className="h-9 w-9" />
             <span className="hidden flex-col leading-none sm:flex">
@@ -97,7 +97,7 @@ export default async function Portada() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
+      <main className="px-4 py-8 sm:px-6 sm:py-10 lg:px-10">
         <div className="space-y-10">
           <Banner
             fotos={fotosDePortada(productos)}

@@ -81,7 +81,7 @@ export function MosaicoRubros({
       </nav>
 
       {/* En el celular corre de costado; en pantalla grande entra en una grilla. */}
-      <ul className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-4 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-5">
+      <ul className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-4 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
         {visibles.map((c) => {
           const foto = fotoDe(c.id)
           const activa = rubro === c.id

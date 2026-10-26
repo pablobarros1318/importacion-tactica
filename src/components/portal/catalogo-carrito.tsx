@@ -412,7 +412,7 @@ export function CatalogoCarrito({
                     : 'Todavía no hay nada publicado en este rubro.'}
                 </p>
               ) : (
-                <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:gap-x-5 sm:gap-y-8 lg:grid-cols-3">
+                <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-x-5 sm:gap-y-8 xl:grid-cols-4 2xl:grid-cols-5">
                   {ordenadas.map((f) => (
                     <Tarjeta
                       key={f.id}

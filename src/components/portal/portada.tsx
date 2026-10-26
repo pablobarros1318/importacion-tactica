@@ -13,8 +13,11 @@ import { Destello, Monograma, Wordmark } from '@/components/marca'
  * segundo botón del banner y lo que dice el pie al final.
  */
 
-/** El número de la tienda para WhatsApp. Sin él, lo que lo usa no se dibuja. */
-const WHATSAPP = process.env.NEXT_PUBLIC_WHATSAPP_TIENDA ?? null
+/**
+ * El número de la tienda para WhatsApp: 54 9 + característica + número.
+ * Provisorio, hasta que esté el teléfono corporativo.
+ */
+const WHATSAPP = '5492235390737'
 
 /**
  * Hasta tres fotos para el banner, una por producto y de lo que hay hoy.
@@ -46,18 +49,21 @@ export function Banner({
   secundario: { href: string; texto: string }
 }) {
   return (
-    <section className="relative overflow-hidden rounded-3xl bg-tinta text-crema-hueso">
+    // De borde a borde, como el banner de las tiendas: los márgenes negativos
+    // le devuelven el relleno que `main` le pone al resto de la página, y el
+    // margen de arriba lo pega al encabezado.
+    <section className="relative -mx-4 -mt-8 overflow-hidden bg-tinta text-crema-hueso sm:-mx-6 sm:-mt-10 lg:-mx-10">
       {/* El brillo dorado de fondo: da profundidad sin otra foto que cargar. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute -left-24 -top-24 h-80 w-80 rounded-full bg-oro/20 blur-3xl"
+        className="pointer-events-none absolute -left-24 -top-24 h-96 w-96 rounded-full bg-oro/20 blur-3xl"
       />
       <div
         aria-hidden
         className="pointer-events-none absolute -bottom-32 right-10 h-72 w-72 rounded-full bg-oro-claro/10 blur-3xl"
       />
 
-      <div className="relative grid items-center gap-8 px-6 py-10 sm:px-10 sm:py-14 md:grid-cols-[1.1fr_1fr]">
+      <div className="relative grid items-center gap-8 px-4 py-10 sm:px-6 sm:py-14 md:grid-cols-[1.1fr_1fr] lg:px-10 lg:py-20 xl:gap-16">
         <div>
           <p className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-oro-claro">
             <Destello size={10} className="text-oro" />
@@ -110,7 +116,7 @@ function Collage({ fotos }: { fotos: string[] }) {
   return (
     <div
       className={[
-        'grid h-64 gap-3 sm:h-80',
+        'grid h-64 gap-3 sm:h-80 lg:h-[26rem] xl:h-[30rem]',
         fotos.length === 1 ? 'grid-cols-1' : 'grid-cols-[1.3fr_1fr]',
       ].join(' ')}
     >
@@ -220,7 +226,7 @@ export function PieTienda({ children }: { children?: React.ReactNode }) {
 
   return (
     <footer className="mt-16 bg-tinta text-crema/80">
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:grid-cols-2 sm:px-6 lg:grid-cols-[1.4fr_1fr_1fr]">
+      <div className="grid gap-10 px-4 py-12 sm:grid-cols-2 sm:px-6 lg:px-10 lg:grid-cols-[1.4fr_1fr_1fr]">
         <div>
           <div className="flex items-center gap-3">
             <Monograma size={44} />
@@ -270,7 +276,7 @@ export function PieTienda({ children }: { children?: React.ReactNode }) {
       </div>
 
       <div className="border-t border-crema/10">
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 py-5 text-center text-xs text-crema/60 sm:flex-row sm:justify-between sm:px-6 sm:text-left">
+        <div className="flex flex-col items-center gap-2 px-4 py-5 text-center text-xs text-crema/60 sm:flex-row sm:justify-between sm:px-6 sm:text-left lg:px-10">
           <span>© {new Date().getFullYear()} Importación Táctica</span>
           {children}
         </div>
